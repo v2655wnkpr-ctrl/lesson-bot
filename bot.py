@@ -11,11 +11,17 @@ from aiogram.webhook.aiohttp_server import (
 )
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import (
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    CallbackQuery,
+)
 from dotenv import load_dotenv
 from sqlalchemy import select
 
 from database import init_db, async_session
 from models import Student, Lesson
+from scheduler import start_scheduler
 
 
 load_dotenv()
@@ -51,6 +57,45 @@ def is_teacher(uid: int) -> bool:
     return uid == TEACHER_ID
 
 
+def hours_keyboard() -> InlineKeyboardMarkup:
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text="За 1 час", callback_data="h:1"
+            ),
+            InlineKeyboardButton(
+                text="За 3 часа", callback_data="h:3"
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="За 1 день", callback_data="h:24"
+            ),
+            InlineKeyboardButton(
+                text="За 2 дня", callback_data="h:48"
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="За неделю", callback_data="h:168"
+            ),
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def hours_text(hours: int) -> str:
+    if hours == 1:
+        return "за 1 час"
+    if hours == 24:
+        return "за 1 день"
+    if hours == 48:
+        return "за 2 дня"
+    if hours == 168:
+        return "за неделю"
+    return f"за {hours} ч."
+
+
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     user = message.from_user
@@ -83,6 +128,7 @@ async def cmd_start(message: types.Message):
             f"Привет, {user.full_name}!\n\n"
             "Команды:\n"
             "/my_lessons — мои занятия\n"
+            "/settings — настроить напоминания\n"
             "/help — помощь"
         )
 
@@ -95,9 +141,52 @@ async def cmd_help(message: types.Message):
         "Доступные команды:\n"
         "/start — начать\n"
         "/my_lessons — мои занятия\n"
+        "/settings — напоминания\n"
         "/help — справка"
     )
     await message.answer(text)
+
+
+@dp.message(Command("settings"))
+async def cmd_settings(message: types.Message):
+    uid = message.from_user.id
+
+    async with async_session() as session:
+        q = select(Student).where(Student.tg_id == uid)
+        result = await session.execute(q)
+        student = result.scalar_one_or_none()
+
+    if not student:
+        await message.answer("Сначала напиши /start")
+        return
+
+    hours = student.custom_hours_before or 2
+    text = (
+        f"Сейчас напоминаю {hours_text(hours)}.\n\n"
+        "Выбери, за сколько напоминать:"
+    )
+    await message.answer(
+        text, reply_markup=hours_keyboard()
+    )
+
+
+@dp.callback_query(lambda c: c.data.startswith("h:"))
+async def process_hours(callback: CallbackQuery):
+    hours = int(callback.data.split(":")[1])
+    uid = callback.from_user.id
+
+    async with async_session() as session:
+        q = select(Student).where(Student.tg_id == uid)
+        result = await session.execute(q)
+        student = result.scalar_one_or_none()
+
+        if student:
+            student.custom_hours_before = hours
+            await session.commit()
+
+    text = f"Готово! Напомню {hours_text(hours)}."
+    await callback.message.edit_text(text)
+    await callback.answer()
 
 
 @dp.message(Command("my_lessons"))
@@ -136,7 +225,10 @@ async def cmd_my_lessons(message: types.Message):
 
 
 @dp.message(Command("add_lesson"))
-async def cmd_add_lesson(message: types.Message, state: FSMContext):
+async def cmd_add_lesson(
+    message: types.Message,
+    state: FSMContext,
+):
     uid = message.from_user.id
     if not is_teacher(uid):
         await message.answer("Только для преподавателя.")
@@ -147,11 +239,14 @@ async def cmd_add_lesson(message: types.Message, state: FSMContext):
 
 
 @dp.message(AddLesson.student)
-async def process_student(message: types.Message, state: FSMContext):
+async def process_student(
+    message: types.Message,
+    state: FSMContext,
+):
     try:
         sid = int(message.text.strip())
     except ValueError:
-        await message.answer("Это не число. Введи ID.")
+        await message.answer("Это не число.")
         return
 
     async with async_session() as session:
@@ -181,7 +276,10 @@ async def process_student(message: types.Message, state: FSMContext):
 
 
 @dp.message(AddLesson.dt)
-async def process_dt(message: types.Message, state: FSMContext):
+async def process_dt(
+    message: types.Message,
+    state: FSMContext,
+):
     try:
         dt = datetime.strptime(
             message.text.strip(),
@@ -194,7 +292,10 @@ async def process_dt(message: types.Message, state: FSMContext):
         return
 
     await state.update_data(dt=dt)
-    await message.answer("Введи название занятия:")
+    await message.answer(
+        "Введи название занятия "
+        "(или «-», чтобы было «Итальянский»):"
+    )
     await state.set_state(AddLesson.title)
 
 
@@ -205,6 +306,8 @@ async def process_title(
 ):
     data = await state.get_data()
     title = message.text.strip()
+    if title == "-":
+        title = "Итальянский"
 
     async with async_session() as session:
         lesson = Lesson(
@@ -234,7 +337,9 @@ async def cmd_list_lessons(message: types.Message):
         return
 
     async with async_session() as session:
-        q = select(Lesson).order_by(Lesson.datetime_start)
+        q = select(Lesson).order_by(
+            Lesson.datetime_start
+        )
         result = await session.execute(q)
         lessons = result.scalars().all()
 
@@ -262,6 +367,7 @@ async def on_startup(bot: Bot) -> None:
         drop_pending_updates=True,
     )
     logging.info("Webhook установлен")
+    start_scheduler(bot)
 
 
 app = web.Application()
