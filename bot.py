@@ -19,15 +19,10 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 TEACHER_ID = 932503024  # твой Telegram ID
 
 if not BOT_TOKEN:
-    raise ValueError("Не найден BOT_TOKEN в переменных окружения")
-
-logging.basicConfig(level=logging.INFO)
-
-BASE_WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL", "https://localhost")
-WEBHOOK_PATH = "/webhook"
+    raise ValueError("Не найден BOT_TOKEN в переменных 
 WEBHOOK_SECRET = "my-secret-webhook-token"
 WEB_SERVER_HOST = "0.0.0.0"
-WEB_SERVER_PORT = int(os.getenv("PORT", 8080))
+WEB_SERVER_PORT = 
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
