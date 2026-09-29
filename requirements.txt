@@ -1,0 +1,78 @@
+import asyncio
+import logging
+import os
+import threading
+
+from dotenv import load_dotenv
+from flask import Flask
+
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
+
+load_dotenv()
+BOT_TOKEN =8678588592:AAFWlP4MkAOHJgiB8TVEcMl-2Ywm82igHWs
+
+if not BOT_TOKEN:
+    raise ValueError("Не найден BOT_TOKEN. Добавь переменную окружения на Render")
+
+logging.basicConfig(level=logging.INFO)
+
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
+
+
+@dp.message(Command("start"))
+async def cmd_start(message: types.Message):
+    await message.answer(
+        f"Привет, {message.from_user.full_name}! 👋\n"
+        f"Я бот для отслеживания занятий.\n"
+        f"Напиши /help, чтобы узнать что я умею."
+    )
+
+
+@dp.message(Command("help"))
+async def cmd_help(message: types.Message):
+    await message.answer(
+        "Я пока только учусь. Скоро буду:\n"
+        "• показывать твоё расписание занятий\n"
+        "• напоминать о занятиях\n"
+        "• принимать оплату\n\n"
+        "А пока просто повторяю за тобой 😊"
+    )
+
+
+@dp.message()
+async def echo(message: types.Message):
+    await message.answer(f"Ты написал: {message.text}")
+
+
+async def run_bot():
+    print("Бот запущен...")
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
+
+
+# --- Flask-обёртка, чтобы Render не усыплял сервис ---
+app = Flask(__name__)
+
+
+@app.route("/")
+def index():
+    return "Bot is alive"
+
+
+@app.route("/health")
+def health():
+    return "OK", 200
+
+
+def run_flask():
+    port = int(os.getenv("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
+
+
+if __name__ == "__main__":
+    # Flask в отдельном потоке
+    threading.Thread(target=run_flask, daemon=True).start()
+    # Бот в основном потоке
+    asyncio.run(run_bot())
