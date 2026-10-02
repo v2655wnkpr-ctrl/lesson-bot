@@ -1,6 +1,7 @@
 import logging
 import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types
@@ -21,7 +22,7 @@ from sqlalchemy import select
 
 from database import init_db, async_session
 from models import Student, Lesson
-from scheduler import start_scheduler
+from scheduler import start_scheduler, now_msk
 
 
 load_dotenv()
@@ -96,6 +97,43 @@ def hours_text(hours: int) -> str:
     return f"за {hours} ч."
 
 
+def students_keyboard(students) -> InlineKeyboardMarkup:
+    """Кнопки с учениками."""
+    buttons = []
+    for s in students:
+        name = s.full_name
+        if len(name) > 30:
+            name = name[:30] + "..."
+        buttons.append([
+            InlineKeyboardButton(
+                text=name,
+                callback_data=f"st:{s.id}",
+            )
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def lessons_keyboard(lessons, students_map):
+    """Кнопки с занятиями для переноса (на будущее)."""
+    buttons = []
+    for lesson in lessons:
+        name = students_map.get(
+            lesson.student_id, "?"
+        )
+        dt = lesson.datetime_start
+        label = (
+            f"{dt.strftime('%d.%m %H:%M')} — "
+            f"{name}"
+        )
+        buttons.append([
+            InlineKeyboardButton(
+                text=label,
+                callback_data=f"ls:{lesson.id}",
+            )
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     user = message.from_user
@@ -121,14 +159,15 @@ async def cmd_start(message: types.Message):
             "Команды:\n"
             "/add_lesson — добавить занятие\n"
             "/list_lessons — все занятия\n"
-            "/my_lessons — мои занятия"
+            "/my_lessons — мои занятия\n"
+            "/stats — статистика"
         )
     else:
         text = (
             f"Привет, {user.full_name}!\n\n"
             "Команды:\n"
             "/my_lessons — мои занятия\n"
-            "/settings — настроить напоминания\n"
+            "/settings — напоминания\n"
             "/help — помощь"
         )
 
@@ -214,10 +253,12 @@ async def cmd_my_lessons(message: types.Message):
         await message.answer("У тебя пока нет занятий.")
         return
 
+    now = now_msk()
     lines = ["Твои занятия:\n"]
     for lesson in lessons:
         dt = lesson.datetime_start
-        line = f"• {dt.strftime('%d.%m.%Y %H:%M')}"
+        mark = "✓" if dt < now else "•"
+        line = f"{mark} {dt.strftime('%d.%m.%Y %H:%M')}"
         line += f" — {lesson.title}"
         lines.append(line)
 
@@ -234,19 +275,70 @@ async def cmd_add_lesson(
         await message.answer("Только для преподавателя.")
         return
 
-    await message.answer("Введи Telegram ID ученика:")
+    async with async_session() as session:
+        q = select(Student).where(
+            Student.tg_id != TEACHER_ID
+        )
+        result = await session.execute(q)
+        students = result.scalars().all()
+
+    if not students:
+        await message.answer(
+            "Нет учеников. Пусть кто-то напишет /start."
+        )
+        return
+
+    text = "Выбери ученика:"
+    await message.answer(
+        text,
+        reply_markup=students_keyboard(students),
+    )
     await state.set_state(AddLesson.student)
 
 
+@dp.callback_query(
+    lambda c: c.data.startswith("st:"),
+    AddLesson.student,
+)
+async def process_student_btn(
+    callback: CallbackQuery,
+    state: FSMContext,
+):
+    sid = int(callback.data.split(":")[1])
+
+    async with async_session() as session:
+        student = await session.get(Student, sid)
+
+    if not student:
+        await callback.answer("Не найден")
+        return
+
+    await state.update_data(
+        student_id=student.id,
+        student_name=student.full_name,
+    )
+    text = (
+        f"Ученик: {student.full_name}\n\n"
+        "Введи дату и время:\n"
+        "ДД.ММ.ГГГГ ЧЧ:ММ\n"
+        "Например: 15.10.2026 18:30"
+    )
+    await callback.message.edit_text(text)
+    await callback.answer()
+    await state.set_state(AddLesson.dt)
+
+
 @dp.message(AddLesson.student)
-async def process_student(
+async def process_student_text(
     message: types.Message,
     state: FSMContext,
 ):
     try:
         sid = int(message.text.strip())
     except ValueError:
-        await message.answer("Это не число.")
+        await message.answer(
+            "Выбери ученика кнопкой выше."
+        )
         return
 
     async with async_session() as session:
@@ -255,9 +347,7 @@ async def process_student(
         student = result.scalar_one_or_none()
 
     if not student:
-        await message.answer(
-            "Ученик не найден. Пусть напишет /start."
-        )
+        await message.answer("Ученик не найден.")
         await state.clear()
         return
 
@@ -278,13 +368,13 @@ async def process_student(
 @dp.message(AddLesson.dt)
 async def process_dt(
     message: types.Message,
-    state: FSMContext,
+    state: FotSMContext,
 ):
-    try:
+    try: Bot):
         dt = datetime.strptime(
-            message.text.strip(),
+            message.text.strip ->(),
             "%d.%m.%Y %H:%M",
-        )
+        None )
     except ValueError:
         await message.answer(
             "Неверный формат. Пример: 15.10.2026 18:30"
@@ -343,22 +433,150 @@ async def cmd_list_lessons(message: types.Message):
         result = await session.execute(q)
         lessons = result.scalars().all()
 
+        # Карта id → имя ученика
+        q2 = select(Student)
+        result2 = await session.execute(q2)
+        students = result2.scalars().all()
+        students_map = {
+            s.id: s.full_name for s in students
+        }
+
     if not lessons:
         await message.answer("Занятий пока нет.")
         return
 
-    lines = ["Все занятия:\n"]
-    for lesson in lessons:
-        dt = lesson.datetime_start
-        line = f"• {dt.strftime('%d.%m.%Y %H:%M')}"
-        line += f" — {lesson.title}"
-        line += f" (id: {lesson.student_id})"
-        lines.append(line)
+    now = now_msk()
+    future = [l for l in lessons if l.datetime_start >= now]
+    past = [l for l in lessons if l.datetime_start < now]
+
+    lines = []
+
+    if future:
+        lines.append("📅 Предстоящие:\n")
+        for lesson in future:
+            name = students_map.get(
+                lesson.student_id, "?"
+            )
+            dt = lesson.datetime_start
+            line = f"• {dt.strftime('%d.%m %H:%M')}"
+            line += f" — {name}"
+            line += f" ({lesson.title})"
+            lines.append(line)
+
+    if past:
+        lines.append("\n✓ Прошедшие:\n")
+        for lesson in past[-10:]:
+            name = students_map.get(
+                lesson.student_id, "?"
+            )
+            dt = lesson.datetime_start
+            line = f"✓ {dt.strftime('%d.%m %H:%M')}"
+            line += f" — {name}"
+            lines.append(line)
 
     await message.answer("\n".join(lines))
 
 
-async def on_startup(bot: Bot) -> None:
+@dp.message(Command("stats"))
+async def cmd_stats(message: types.Message):
+    uid = message.from_user.id
+    if not is_teacher(uid):
+        await message.answer("Только для преподавателя.")
+        return
+
+    async with async_session() as session:
+        q = select(Student)
+        result = await session.execute(q)
+        students = result.scalars().all()
+
+        q2 = select(Lesson)
+        result2 = await session.execute(q2)
+        lessons = result2.scalars().all()
+
+    now = now_msk()
+
+    lines = ["📊 Статистика:\n"]
+    lines.append(f"Учеников: {len(students)}")
+    lines.append(f"Всего занятий: {len(lessons)}")
+
+    done = [l for l in lessons if l.datetime_start < now]
+    future = [l for l in lessons if l.datetime_start >= now]
+    lines.append(f"Проведено: {len(done)}")
+    lines.append(f"Предстоит: {len(future)}")
+
+    lines.append("\nПо ученикам:")
+    for s in students:
+        if s.tg_id == TEACHER_ID:
+            continue
+        s_lessons = [
+            l for l in lessons
+            if l.student_id == s.id
+        ]
+        s_done = len([
+            l for l in s_lessons
+            if l.datetime_start < now
+        ])
+        paid = s.paid_lessons or 0
+        left = paid - s_done
+        lines.append(
+            f"• {s.full_name}: "
+            f"{s_done} проведено, "
+            f"{left} осталось"
+        )
+
+    await message.answer("\n".join(lines))
+
+
+@dp.message(Command("set_paid"))
+async def cmd_set_paid(
+    message: types.Message,
+    state: FSMContext,
+):
+    uid = message.from_user.id
+    if not is_teacher(uid):
+        await message.answer("Только для преподавателя.")
+        return
+
+    args = message.text.split()
+    if len(args) < 3:
+        await message.answer(
+            "Формат: /set_paid ID количество\n"
+            "Например: /set_paid 803167669 8"
+        )
+        return
+
+    try:
+        sid = int(args[1])
+        amount = int(args[2])
+    except ValueError:
+        await message.answer("ID и число.")
+        return
+
+    async with async_session() as session:
+        q = select(Student).where(Student.tg_id == sid)
+        result = await session.execute(q)
+        student = result.scalar_one_or_none()
+
+        if not student:
+            await message.answer("Ученик не найден.")
+            return
+
+        student.paid_lessons = amount
+        student.last_payment_reminder = None
+        await session.commit()
+
+    await message.answer(
+        f"✅ {student.full_name}: "
+        f"оплачено {amount} занятий"
+    )
+
+
+# Health-эндпоинт для UptimeRobot
+async def health(request):
+    return web.Response(text="OK")
+
+
+async def on_startup(b:
     await init_db()
     logging.info("БД готова")
     await bot.set_webhook(
@@ -378,6 +596,8 @@ handler = SimpleRequestHandler(
     secret_token=WEBHOOK_SECRET,
 )
 handler.register(app, path=WEBHOOK_PATH)
+
+app.router.add_get("/health", health)
 
 setup_application(app, dp, bot=bot)
 dp.startup.register(on_startup)
