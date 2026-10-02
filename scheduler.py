@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import (
     AsyncIOScheduler,
@@ -10,6 +11,8 @@ from database import async_session
 from models import Student, Lesson
 
 
+MSK = ZoneInfo("Europe/Moscow")
+
 LESSON_LINK = (
     "https://telemost.yandex.ru/j/55769145881207"
 )
@@ -17,8 +20,12 @@ LESSON_LINK = (
 scheduler = AsyncIOScheduler()
 
 
+def now_msk() -> datetime:
+    return datetime.now(MSK).replace(tzinfo=None)
+
+
 async def check_lessons(bot):
-    now = datetime.now()
+    now = now_msk()
 
     async with async_session() as session:
         q = select(Student)
@@ -51,6 +58,14 @@ async def check_lessons(bot):
                         bot, student, lesson
                     )
 
+                # Отмечаем прошедшее занятие как проведённое
+                if mins < -1 and not lesson.is_done:
+                    lesson.is_done = True
+                    await session.commit()
+
+            # Напоминание об оплате
+            await check_payment(bot, student, session)
+
 
 async def send_reminder(bot, student, lesson):
     dt = lesson.datetime_start
@@ -77,6 +92,42 @@ async def send_link(bot, student, lesson):
         await bot.send_message(student.tg_id, text)
     except Exception as e:
         logging.error(f"Ошибка ссылки: {e}")
+
+
+async def check_payment(bot, student, session):
+    """Напоминает об оплате, если занятия заканчиваются."""
+    # Сколько проведено занятий всего
+    q = select(Lesson).where(
+        Lesson.student_id == student.id,
+        Lesson.is_done == True,
+    )
+    result = await session.execute(q)
+    done = len(result.scalars().all())
+
+    # Сколько оплачено
+    paid = student.paid_lessons or 0
+
+    # Осталось занятий
+    left = paid - done
+
+    # Если осталось 1 занятие — напоминаем
+    if left == 1:
+        now = now_msk()
+        last = student.last_payment_reminder
+        if last is None or (now - last).days >= 1:
+            text = (
+                "💰 Напоминание об оплате\n\n"
+                "У тебя осталось 1 занятие. "
+                "Пора оплатить следующий блок."
+            )
+            try:
+                await bot.send_message(
+                    student.tg_id, text
+                )
+                student.last_payment_reminder = now
+                await session.commit()
+            except Exception as e:
+                logging.error(f"Ошибка оплаты: {e}")
 
 
 def start_scheduler(bot):
