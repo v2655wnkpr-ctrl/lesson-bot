@@ -4,3 +4,4 @@ aiohttp==3.10.5
 sqlalchemy==2.0.35
 apscheduler==3.10.4
 asyncpg==0.29.0
+tzdata==2024.2
