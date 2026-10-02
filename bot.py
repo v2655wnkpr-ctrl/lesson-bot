@@ -98,7 +98,6 @@ def hours_text(hours: int) -> str:
 
 
 def students_keyboard(students) -> InlineKeyboardMarkup:
-    """Кнопки с учениками."""
     buttons = []
     for s in students:
         name = s.full_name
@@ -108,27 +107,6 @@ def students_keyboard(students) -> InlineKeyboardMarkup:
             InlineKeyboardButton(
                 text=name,
                 callback_data=f"st:{s.id}",
-            )
-        ])
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-
-def lessons_keyboard(lessons, students_map):
-    """Кнопки с занятиями для переноса (на будущее)."""
-    buttons = []
-    for lesson in lessons:
-        name = students_map.get(
-            lesson.student_id, "?"
-        )
-        dt = lesson.datetime_start
-        label = (
-            f"{dt.strftime('%d.%m %H:%M')} — "
-            f"{name}"
-        )
-        buttons.append([
-            InlineKeyboardButton(
-                text=label,
-                callback_data=f"ls:{lesson.id}",
             )
         ])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -160,7 +138,8 @@ async def cmd_start(message: types.Message):
             "/add_lesson — добавить занятие\n"
             "/list_lessons — все занятия\n"
             "/my_lessons — мои занятия\n"
-            "/stats — статистика"
+            "/stats — статистика\n"
+            "/set_paid — отметить оплату"
         )
     else:
         text = (
@@ -368,13 +347,13 @@ async def process_student_text(
 @dp.message(AddLesson.dt)
 async def process_dt(
     message: types.Message,
-    state: FotSMContext,
+    state: FSMContext,
 ):
-    try: Bot):
+    try:
         dt = datetime.strptime(
-            message.text.strip ->(),
+            message.text.strip(),
             "%d.%m.%Y %H:%M",
-        None )
+        )
     except ValueError:
         await message.answer(
             "Неверный формат. Пример: 15.10.2026 18:30"
@@ -433,7 +412,6 @@ async def cmd_list_lessons(message: types.Message):
         result = await session.execute(q)
         lessons = result.scalars().all()
 
-        # Карта id → имя ученика
         q2 = select(Student)
         result2 = await session.execute(q2)
         students = result2.scalars().all()
@@ -528,10 +506,7 @@ async def cmd_stats(message: types.Message):
 
 
 @dp.message(Command("set_paid"))
-async def cmd_set_paid(
-    message: types.Message,
-    state: FSMContext,
-):
+async def cmd_set_paid(message: types.Message):
     uid = message.from_user.id
     if not is_teacher(uid):
         await message.answer("Только для преподавателя.")
@@ -571,12 +546,11 @@ async def cmd_set_paid(
     )
 
 
-# Health-эндпоинт для UptimeRobot
 async def health(request):
     return web.Response(text="OK")
 
 
-async def on_startup(b:
+async def on_startup(bot: Bot) -> None:
     await init_db()
     logging.info("БД готова")
     await bot.set_webhook(
