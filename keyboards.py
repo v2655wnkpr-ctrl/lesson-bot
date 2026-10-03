@@ -171,25 +171,25 @@ def tariffs_keyboard():
     b = [
         [
             InlineKeyboardButton(
-                text="30 мин, 1 раз — 2000₽",
+                text="30 мин, 1 раз — 2000₽/мес",
                 callback_data="tar:30_1",
             ),
         ],
         [
             InlineKeyboardButton(
-                text="30 мин, 2 раза — 4000₽",
+                text="30 мин, 2 раза — 4000₽/мес",
                 callback_data="tar:30_2",
             ),
         ],
         [
             InlineKeyboardButton(
-                text="60 мин, 1 раз — 4000₽",
+                text="60 мин, 1 раз — 4000₽/мес",
                 callback_data="tar:60_1",
             ),
         ],
         [
             InlineKeyboardButton(
-                text="60 мин, 2 раза — 9000₽",
+                text="60 мин, 2 раза — 9000₽/мес",
                 callback_data="tar:60_2",
             ),
         ],
