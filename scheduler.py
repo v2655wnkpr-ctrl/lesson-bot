@@ -12,6 +12,7 @@ from models import Student, Lesson
 
 
 MSK = ZoneInfo("Europe/Moscow")
+TEACHER_ID = 932503024
 
 LESSON_LINK = (
     "https://telemost.yandex.ru/j/55769145881207"
@@ -59,6 +60,85 @@ async def check_lessons(bot):
                     )
 
 
+async def check_teacher(bot):
+    now = now_msk()
+
+    async with async_session() as session:
+        q = select(Lesson)
+        result = await session.execute(q)
+        lessons = result.scalars().all()
+
+        q2 = select(Student).where(
+            Student.tg_id == TEACHER_ID
+        )
+        r2 = await session.execute(q2)
+        teacher = r2.scalar_one_or_none()
+
+        if not teacher:
+            return
+
+        hours = teacher.custom_hours_before
+        if hours is None:
+            hours = 2
+
+        for lesson in lessons:
+            diff = lesson.datetime_start - now
+            mins = diff.total_seconds() / 60
+
+            target = hours * 60
+            if 0 <= target - mins <= 1:
+                await send_teacher_rem(
+                    bot, session, lesson
+                )
+
+            if 0 <= 5 - mins <= 1:
+                await send_teacher_5(
+                    bot, session, lesson
+                )
+
+
+async def send_teacher_rem(bot, session, lesson):
+    q = select(Student).where(
+        Student.id == lesson.student_id
+    )
+    r = await session.execute(q)
+    student = r.scalar_one_or_none()
+    name = student.full_name if student else "?"
+
+    dt = lesson.datetime_start
+    text = (
+        "🔔 Напоминание (препод)\n\n"
+        f"Сегодня в {dt.strftime('%H:%M')} "
+        f"занятие с {name}\n"
+        f"Тема: {lesson.title}"
+    )
+    try:
+        await bot.send_message(TEACHER_ID, text)
+    except Exception as e:
+        logging.error(f"Ош: {e}")
+
+
+async def send_teacher_5(bot, session, lesson):
+    q = select(Student).where(
+        Student.id == lesson.student_id
+    )
+    r = await session.execute(q)
+    student = r.scalar_one_or_none()
+    name = student.full_name if student else "?"
+
+    dt = lesson.datetime_start
+    text = (
+        "⏰ Через 5 минут занятие!\n\n"
+        f"{name}, {dt.strftime('%H:%M')}\n"
+        f"Тема: {lesson.title}\n\n"
+        f"Ссылка: {LESSON_LINK}"
+    )
+    try:
+        await bot.send_message(TEACHER_ID, text)
+    except Exception as e:
+        logging.error(f"Ош: {e}")
+
+
 async def send_reminder(bot, student, lesson):
     dt = lesson.datetime_start
     text = (
@@ -69,7 +149,7 @@ async def send_reminder(bot, student, lesson):
     try:
         await bot.send_message(student.tg_id, text)
     except Exception as e:
-        logging.error(f"Ошибка напоминания: {e}")
+        logging.error(f"Ош: {e}")
 
 
 async def send_link(bot, student, lesson):
@@ -83,12 +163,18 @@ async def send_link(bot, student, lesson):
     try:
         await bot.send_message(student.tg_id, text)
     except Exception as e:
-        logging.error(f"Ошибка ссылки: {e}")
+        logging.error(f"Ош: {e}")
 
 
 def start_scheduler(bot):
     scheduler.add_job(
         check_lessons,
+        "interval",
+        minutes=1,
+        args=[bot],
+    )
+    scheduler.add_job(
+        check_teacher,
         "interval",
         minutes=1,
         args=[bot],
