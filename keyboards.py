@@ -267,3 +267,92 @@ def set_paid_amounts_keyboard(sid: int):
     return InlineKeyboardMarkup(
         inline_keyboard=b
     )
+def paid_button_keyboard():
+    b = [[
+        InlineKeyboardButton(
+            text="💳 Я оплатил(а)",
+            callback_data="paid:click",
+        ),
+    ]]
+    return InlineKeyboardMarkup(
+        inline_keyboard=b
+    )
+
+
+def back_from_paid_keyboard():
+    b = [[
+        InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data="paid:back",
+        ),
+    ]]
+    return InlineKeyboardMarkup(
+        inline_keyboard=b
+    )
+
+
+def lessons_action_keyboard(lessons, action):
+    b = []
+    for les in lessons[:20]:
+        dt = les.datetime_start
+        text = dt.strftime("%d.%m %H:%M")
+        text += f" — {les.title}"
+        b.append([
+            InlineKeyboardButton(
+                text=text,
+                callback_data=f"{action}:{les.id}",
+            )
+        ])
+    b.append([
+        InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data="menu:main",
+        ),
+    ])
+    return InlineKeyboardMarkup(
+        inline_keyboard=b
+    )
+
+
+def confirm_delete_keyboard(lid: int):
+    b = [
+        [
+            InlineKeyboardButton(
+                text="🗑 Удалить",
+                callback_data=f"confirm_del:{lid}",
+            ),
+            InlineKeyboardButton(
+                text="❌ Отмена",
+                callback_data="menu:main",
+            ),
+        ],
+    ]
+    return InlineKeyboardMarkup(
+        inline_keyboard=b
+    )
+
+
+def pay_from_card_keyboard(sid: int):
+    b = [
+        [
+            InlineKeyboardButton(
+                text="💳 Оплата после урока",
+                callback_data=f"pc:after:{sid}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="⏰ Абонемент закончился",
+                callback_data=f"pc:end:{sid}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="⬅️ Назад",
+                callback_data="menu:main",
+            ),
+        ],
+    ]
+    return InlineKeyboardMarkup(
+        inline_keyboard=b
+    )
