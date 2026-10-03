@@ -207,3 +207,63 @@ def card_keyboard(student_id: int):
     return InlineKeyboardMarkup(
         inline_keyboard=b
     )
+def set_paid_students_keyboard(students):
+    b = []
+    for i, s in enumerate(students, 1):
+        un = s.username or "—"
+        text = f"{i}. {s.full_name}"
+        b.append([
+            InlineKeyboardButton(
+                text=text,
+                callback_data=f"sp:{s.id}",
+            )
+        ])
+    b.append([
+        InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data="menu:main",
+        ),
+    ])
+    return InlineKeyboardMarkup(
+        inline_keyboard=b
+    )
+
+
+def set_paid_amounts_keyboard(sid: int):
+    b = [
+        [
+            InlineKeyboardButton(
+                text="4 занятия",
+                callback_data=f"spa:{sid}:4",
+            ),
+            InlineKeyboardButton(
+                text="8 занятий",
+                callback_data=f"spa:{sid}:8",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="12 занятий",
+                callback_data=f"spa:{sid}:12",
+            ),
+            InlineKeyboardButton(
+                text="16 занятий",
+                callback_data=f"spa:{sid}:16",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="❌ Обнулить",
+                callback_data=f"spa:{sid}:0",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="⬅️ Назад",
+                callback_data="sp:back",
+            ),
+        ],
+    ]
+    return InlineKeyboardMarkup(
+        inline_keyboard=b
+    )
