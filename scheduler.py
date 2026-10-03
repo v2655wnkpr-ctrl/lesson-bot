@@ -59,19 +59,18 @@ async def check_lessons(bot):
                         bot, student, lesson
                     )
 
-                # Автосписание
                 if mins < -5 and not lesson.is_done:
                     lesson.is_done = True
                     await session.commit()
                     if student.paid_lessons > 0:
                         student.paid_lessons -= 1
                         await session.commit()
-                        await check_paid_balance(
+                        await check_paid(
                             bot, student, session
                         )
 
 
-async def check_paid_balance(bot, student, session):
+async def check_paid(bot, student, session):
     left = student.paid_lessons
 
     if left == 1:
@@ -89,15 +88,15 @@ async def check_paid_balance(bot, student, session):
             except Exception as e:
                 logging.error(f"Ош: {e}")
 
-            teacher_text = (
-                "⚠️ У ученика осталось "
-                "1 занятие\n\n"
+            un = student.username or "—"
+            t_text = (
+                "⚠️ Осталось 1 занятие\n\n"
                 f"{student.full_name}\n"
-                f"@{student.username or '—'}"
+                f"@{un}"
             )
             try:
                 await bot.send_message(
-                    TEACHER_ID, teacher_text
+                    TEACHER_ID, t_text
                 )
             except Exception as e:
                 logging.error(f"Ош: {e}")
