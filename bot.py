@@ -37,6 +37,8 @@ from keyboards import (
     pay_menu,
     tariffs_keyboard,
     card_keyboard,
+    set_paid_students_keyboard,
+    set_paid_amounts_keyboard,
     TEACHER_LINK,
 )
 
@@ -157,6 +159,157 @@ async def cmd_pay(message: types.Message):
         "Что отправить?",
         reply_markup=pay_menu(),
     )
+
+
+@dp.message(Command("settings"))
+async def cmd_settings(message: types.Message):
+    uid = message.from_user.id
+    async with async_session() as session:
+        q = select(Student).where(
+            Student.tg_id == uid
+        )
+        result = await session.execute(q)
+        student = result.scalar_one_or_none()
+
+    if not student:
+        await message.answer("Сначала /start")
+        return
+
+    hours = student.custom_hours_before or 2
+    text = (
+        f"⚙️ Напоминания\n\n"
+        f"Сейчас {hours_text(hours)}.\n\n"
+        "Выбери:"
+    )
+    await message.answer(
+        text, reply_markup=hours_keyboard()
+    )
+
+
+@dp.message(Command("set_paid"))
+async def cmd_set_paid(message: types.Message):
+    uid = message.from_user.id
+    if not is_teacher(uid):
+        await message.answer("Только для препода.")
+        return
+
+    async with async_session() as session:
+        q = select(Student).where(
+            Student.tg_id != TEACHER_ID
+        )
+        r = await session.execute(q)
+        students = r.scalars().all()
+
+    if not students:
+        await message.answer("Нет учеников.")
+        return
+
+    await message.answer(
+        "💰 Отметить оплату\n\n"
+        "Выбери ученика:",
+        reply_markup=set_paid_students_keyboard(
+            students
+        ),
+    )
+
+
+@dp.callback_query(
+    lambda c: c.data.startswith("sp:")
+)
+async def cb_set_paid(callback: CallbackQuery):
+    uid = callback.from_user.id
+    if not is_teacher(uid):
+        await callback.answer("Нет доступа")
+        return
+
+    parts = callback.data.split(":")
+    if parts[1] == "back":
+        await cb_set_paid_back(callback)
+        return
+
+    sid = int(parts[1])
+
+    async with async_session() as session:
+        student = await session.get(Student, sid)
+
+    if not student:
+        await callback.answer("Не найден")
+        return
+
+    paid = student.paid_lessons or 0
+    text = (
+        f"💰 {student.full_name}\n\n"
+        f"Сейчас оплачено: {paid}\n\n"
+        "Выбери новое количество:"
+    )
+    await callback.message.edit_text(
+        text,
+        reply_markup=set_paid_amounts_keyboard(
+            sid
+        ),
+    )
+    await callback.answer()
+
+
+async def cb_set_paid_back(callback):
+    async with async_session() as session:
+        q = select(Student).where(
+            Student.tg_id != TEACHER_ID
+        )
+        r = await session.execute(q)
+        students = r.scalars().all()
+
+    await callback.message.edit_text(
+        "💰 Отметить оплату\n\n"
+        "Выбери ученика:",
+        reply_markup=set_paid_students_keyboard(
+            students
+        ),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(
+    lambda c: c.data.startswith("spa:")
+)
+async def cb_set_paid_amount(
+    callback: CallbackQuery,
+):
+    uid = callback.from_user.id
+    if not is_teacher(uid):
+        await callback.answer("Нет доступа")
+        return
+
+    parts = callback.data.split(":")
+    sid = int(parts[1])
+    amount = int(parts[2])
+
+    async with async_session() as session:
+        student = await session.get(Student, sid)
+
+        if not student:
+            await callback.answer("Не найден")
+            return
+
+        student.paid_lessons = amount
+        student.last_payment_reminder = None
+        await session.commit()
+
+    if amount == 0:
+        text = (
+            f"✅ {student.full_name}: "
+            f"обнулено"
+        )
+    else:
+        text = (
+            f"✅ {student.full_name}: "
+            f"оплачено {amount}"
+        )
+    await callback.message.edit_text(
+        text,
+        reply_markup=back_to_main(),
+    )
+    await callback.answer()
 
 
 @dp.callback_query(
@@ -873,49 +1026,6 @@ async def add_title(
         text, reply_markup=main_menu_teacher()
     )
     await state.clear()
-
-
-@dp.message(Command("set_paid"))
-async def cmd_set_paid(message: types.Message):
-    uid = message.from_user.id
-    if not is_teacher(uid):
-        await message.answer("Только для препода.")
-        return
-
-    args = message.text.split()
-    if len(args) < 3:
-        await message.answer(
-            "/set_paid ID количество\n"
-            "/set_paid 803167669 8"
-        )
-        return
-
-    try:
-        sid = int(args[1])
-        amount = int(args[2])
-    except ValueError:
-        await message.answer("ID и число.")
-        return
-
-    async with async_session() as session:
-        q = select(Student).where(
-            Student.tg_id == sid
-        )
-        r = await session.execute(q)
-        student = r.scalar_one_or_none()
-
-        if not student:
-            await message.answer("Не найден.")
-            return
-
-        student.paid_lessons = amount
-        student.last_payment_reminder = None
-        await session.commit()
-
-    await message.answer(
-        f"✅ {student.full_name}: "
-        f"оплачено {amount}"
-    )
 
 
 async def health(request):
