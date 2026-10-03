@@ -225,4 +225,4 @@ def start_scheduler(bot):
         args=[bot],
     )
     scheduler.start()
-    logging.info("Планировщик запущен")
+    logging.info("Планировщик запущен") 
