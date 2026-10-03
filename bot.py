@@ -215,7 +215,48 @@ async def cmd_set_paid(message: types.Message):
     )
 
 
-# ---------- Оплата: /set_paid ----------
+@dp.message(Command("pay"))
+async def cmd_pay(message: types.Message):
+    uid = message.from_user.id
+    if not is_teacher(uid):
+        await message.answer("Только для препода.")
+        return
+    await message.answer(
+        "💰 Оплата и напоминания\n\n"
+        "Что отправить?",
+        reply_markup=pay_menu(),
+    )
+
+
+@dp.callback_query(
+    lambda c: c.data == "sp:open"
+)
+async def cb_sp_open(callback: CallbackQuery):
+    uid = callback.from_user.id
+    if not is_teacher(uid):
+        await callback.answer("Нет доступа")
+        return
+
+    async with async_session() as session:
+        q = select(Student).where(
+            Student.tg_id != TEACHER_ID
+        )
+        r = await session.execute(q)
+        students = r.scalars().all()
+
+    if not students:
+        await callback.answer("Нет учеников")
+        return
+
+    await callback.message.edit_text(
+        "💰 Отметить оплату\n\n"
+        "Выбери ученика:",
+        reply_markup=set_paid_students_keyboard(
+            students
+        ),
+    )
+    await callback.answer()
+
 
 @dp.callback_query(
     lambda c: c.data.startswith("sp:")
@@ -226,12 +267,11 @@ async def cb_set_paid(callback: CallbackQuery):
         await callback.answer("Нет доступа")
         return
 
-    parts = callback.data.split(":")
-    if parts[1] == "back":
-        await cb_set_paid_back(callback)
+    if callback.data == "sp:open":
+        await cb_sp_open(callback)
         return
 
-    sid = int(parts[1])
+    sid = int(callback.data.split(":")[1])
 
     async with async_session() as session:
         student = await session.get(Student, sid)
@@ -249,24 +289,6 @@ async def cb_set_paid(callback: CallbackQuery):
     await callback.message.edit_text(
         text,
         reply_markup=set_paid_amounts_keyboard(sid),
-    )
-    await callback.answer()
-
-
-async def cb_set_paid_back(callback):
-    async with async_session() as session:
-        q = select(Student).where(
-            Student.tg_id != TEACHER_ID
-        )
-        r = await session.execute(q)
-        students = r.scalars().all()
-
-    await callback.message.edit_text(
-        "💰 Отметить оплату\n\n"
-        "Выбери ученика:",
-        reply_markup=set_paid_students_keyboard(
-            students
-        ),
     )
     await callback.answer()
 
@@ -307,8 +329,6 @@ async def cb_set_paid_amount(
     )
     await callback.answer()
 
-
-# ---------- Главное меню ----------
 
 @dp.callback_query(
     lambda c: c.data == "menu:main"
@@ -439,8 +459,6 @@ async def cb_lessons(callback: CallbackQuery):
     )
     await callback.answer()
 
-
-# ---------- Меню препода ----------
 
 @dp.callback_query(
     lambda c: c.data == "menu:add"
@@ -633,8 +651,6 @@ async def cb_students(callback: CallbackQuery):
     await callback.answer()
 
 
-# ---------- Поиск ----------
-
 @dp.callback_query(
     lambda c: c.data == "menu:find"
 )
@@ -816,8 +832,6 @@ async def cb_card_pay(callback: CallbackQuery):
     await callback.answer()
 
 
-# ---------- Оплата ----------
-
 @dp.callback_query(
     lambda c: c.data == "menu:pay"
 )
@@ -947,8 +961,6 @@ async def pay_send(
     )
 
 
-# ---------- Ученик: тарифы ----------
-
 @dp.callback_query(
     lambda c: c.data == "show:tariffs"
 )
@@ -995,8 +1007,6 @@ async def cb_tariff_chosen(
     )
     await callback.answer()
 
-
-# ---------- Ученик: я оплатил ----------
 
 @dp.callback_query(
     lambda c: c.data == "paid:click"
@@ -1071,14 +1081,11 @@ async def receive_photo(
     await state.clear()
 
 
-# ---------- Перенос занятий ----------
-
 @dp.callback_query(
     lambda c: c.data == "menu:reschedule"
 )
 async def cb_reschedule(
     callback: CallbackQuery,
-    state: FSMContext,
 ):
     uid = callback.from_user.id
     if not is_teacher(uid):
@@ -1190,7 +1197,6 @@ async def resch_apply(
         )
         r = await session.execute(q)
         student = r.scalar_one_or_none()
-        sid = lesson.student_id
         title = lesson.title
 
     if student:
@@ -1215,8 +1221,6 @@ async def resch_apply(
     )
     await state.clear()
 
-
-# ---------- Удаление занятий ----------
 
 @dp.callback_query(
     lambda c: c.data == "menu:delete"
@@ -1342,8 +1346,6 @@ async def cb_del_confirm(
     )
     await callback.answer()
 
-
-# ---------- Добавление занятия ----------
 
 @dp.message(AddLesson.student)
 async def add_student(
