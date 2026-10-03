@@ -196,19 +196,19 @@ def tariffs_keyboard():
     ]
     return InlineKeyboardMarkup(
         inline_keyboard=b
-   act )
+    )
 
 
-def card_keyboard(student:_id: int):
+def card_keyboard(student_id: int):
     b = [
-       pay [
+        [
             InlineKeyboardButton(
                 text="➕ Занятие",
                 callback_data=f"act:add:{student_id}",
             ),
             InlineKeyboardButton(
-                text="💰 Оплата:{",
-                callback_data=f"student_id}",
+                text="💰 Оплата",
+                callback_data=f"act:pay:{student_id}",
             ),
         ],
         [
