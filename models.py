@@ -65,4 +65,4 @@ class Lesson(Base):
 
     student: Mapped["Student"] = relationship(
         back_populates="lessons"
-    )
+    ) 
