@@ -95,4 +95,4 @@ def hours_text(hours: int) -> str:
         return "за 2 дня"
     if hours == 168:
         return "за неделю"
-    return f"за {hours} ч."
+    return f"за {hours} ч." 
