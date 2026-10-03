@@ -28,6 +28,7 @@ from scheduler import start_scheduler, now_msk
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 TEACHER_ID = 932503024
+TEACHER_LINK = "https://t.me/alinaaait"
 
 if not BOT_TOKEN:
     msg = "Не найден BOT_TOKEN"
@@ -54,31 +55,166 @@ class AddLesson(StatesGroup):
     title = State()
 
 
+class PayFlow(StatesGroup):
+    choosing_student = State()
+
+
 def is_teacher(uid: int) -> bool:
     return uid == TEACHER_ID
+
+
+# ---------- Клавиатуры ----------
+
+def main_menu_student() -> InlineKeyboardMarkup:
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text="📅 Мои занятия",
+                callback_data="menu:lessons",
+            ),
+            InlineKeyboardButton(
+                text="⚙️ Напоминания",
+                callback_data="menu:settings",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="💬 Связаться",
+                url=TEACHER_LINK,
+            ),
+            InlineKeyboardButton(
+                text="ℹ️ Помощь",
+                callback_data="menu:help",
+            ),
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def main_menu_teacher() -> InlineKeyboardMarkup:
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text="➕ Добавить занятие",
+                callback_data="menu:add",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="📋 Все занятия",
+                callback_data="menu:list",
+            ),
+            InlineKeyboardButton(
+                text="📊 Статистика",
+                callback_data="menu:stats",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="💰 Оплата",
+                callback_data="menu:pay",
+            ),
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def back_to_main(cb: str = "menu:main") -> InlineKeyboardMarkup:
+    buttons = [[
+        InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data=cb,
+        ),
+    ]]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def hours_keyboard() -> InlineKeyboardMarkup:
     buttons = [
         [
             InlineKeyboardButton(
-                text="За 1 час", callback_data="h:1"
+                text="За 1 час",
+                callback_data="h:1",
             ),
             InlineKeyboardButton(
-                text="За 3 часа", callback_data="h:3"
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="За 1 день", callback_data="h:24"
-            ),
-            InlineKeyboardButton(
-                text="За 2 дня", callback_data="h:48"
+                text="За 3 часа",
+                callback_data="h:3",
             ),
         ],
         [
             InlineKeyboardButton(
-                text="За неделю", callback_data="h:168"
+                text="За 1 день",
+                callback_data="h:24",
+            ),
+            InlineKeyboardButton(
+                text="За 2 дня",
+                callback_data="h:48",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="За неделю",
+                callback_data="h:168",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="⬅️ Назад",
+                callback_data="menu:main",
+            ),
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def pay_menu() -> InlineKeyboardMarkup:
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text="💳 Оплата после урока",
+                callback_data="pay:after",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="⏰ Абонемент закончился",
+                callback_data="pay:end",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="⬅️ Назад",
+                callback_data="menu:main",
+            ),
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def tariffs_keyboard() -> InlineKeyboardMarkup:
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text="30 мин, 1 раз/нед — 2000₽",
+                callback_data="tar:30_1",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="30 мин, 2 раза/нед — 4000₽",
+                callback_data="tar:30_2",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="60 мин, 1 раз/нед — 4000₽",
+                callback_data="tar:60_1",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="60 мин, 2 раза/нед — 9000₽",
+                callback_data="tar:60_2",
             ),
         ],
     ]
@@ -97,20 +233,68 @@ def hours_text(hours: int) -> str:
     return f"за {hours} ч."
 
 
-def students_keyboard(students) -> InlineKeyboardMarkup:
-    buttons = []
-    for s in students:
-        name = s.full_name
-        if len(name) > 30:
-            name = name[:30] + "..."
-        buttons.append([
-            InlineKeyboardButton(
-                text=name,
-                callback_data=f"st:{s.id}",
-            )
-        ])
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+# ---------- Тексты сообщений ----------
 
+def text_pay_after() -> str:
+    return (
+        "Спасибо за занятие! 🤍\n\n"
+        "💳 Стоимость урока:\n"
+        "• 60 мин — 1200 ₽\n"
+        "• 30 мин — 600 ₽\n\n"
+        "Перевод по номеру телефона:\n"
+        "+7 938 550-19-00\n"
+        "Ozon Банк\n\n"
+        "⚠️ Перевод на другой банк "
+        "считается неоплаченным занятием.\n\n"
+        "Хотите сэкономить? "
+        "Посмотрите абонементы 👇"
+    )
+
+
+def text_pay_end() -> str:
+    return (
+        "Ваш абонемент подошёл к концу 🤍\n\n"
+        "Спасибо, что занимаетесь со мной!\n\n"
+        "Если хотите продолжить — "
+        "выберите подходящий вариант "
+        "и оплатите по реквизитам ниже.\n\n"
+        "После оплаты я подтвержу продление "
+        "и мы продолжим занятия по расписанию."
+    )
+
+
+def text_tariffs() -> str:
+    return (
+        "💛 Абонементы (со скидкой)\n\n"
+        "Занятия по 30 минут:\n"
+        "• 1 раз/нед — 2000 ₽\n"
+        "• 2 раза/нед — 4000 ₽\n\n"
+        "Занятия по 60 минут:\n"
+        "• 1 раз/нед — 4000 ₽\n"
+        "• 2 раза/нед — 9000 ₽\n\n"
+        "Оплата — по тем же реквизитам:\n"
+        "+7 938 550-19-00, Ozon Банк\n\n"
+        "Выбери подходящий вариант 👇"
+    )
+
+
+def text_help() -> str:
+    return (
+        "ℹ️ Помощь\n\n"
+        "Этот бот помогает следить "
+        "за занятиями итальянского.\n\n"
+        "• Настрой напоминания, "
+        "чтобы не пропустить урок\n"
+        "• За 30 минут до занятия "
+        "придёт ссылка на встречу\n"
+        "• Оплата — по реквизитам "
+        "из сообщений\n\n"
+        "По всем вопросам: "
+        "@alinaaait"
+    )
+
+
+# ---------- Хендлеры ----------
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
@@ -133,41 +317,80 @@ async def cmd_start(message: types.Message):
 
     if is_teacher(uid):
         text = (
-            "Привет, преподаватель!\n\n"
-            "Команды:\n"
-            "/add_lesson — добавить занятие\n"
-            "/list_lessons — все занятия\n"
-            "/my_lessons — мои занятия\n"
-            "/stats — статистика\n"
-            "/set_paid — отметить оплату"
+            "👋 Привет, преподаватель!\n\n"
+            "Выбери действие:"
         )
+        kb = main_menu_teacher()
     else:
         text = (
-            f"Привет, {user.full_name}!\n\n"
-            "Команды:\n"
-            "/my_lessons — мои занятия\n"
-            "/settings — напоминания\n"
-            "/help — помощь"
+            f"👋 Привет, {user.full_name}!\n\n"
+            "Я помогу тебе следить "
+            "за занятиями итальянского."
+        )
+        kb = main_menu_student()
+
+    await message.answer(text, reply_markup=kb)
+
+
+@dp.message(Command("menu"))
+async def cmd_menu(message: types.Message):
+    uid = message.from_user.id
+    if is_teacher(uid):
+        await message.answer(
+            "Главное меню:",
+            reply_markup=main_menu_teacher(),
+        )
+    else:
+        await message.answer(
+            "Главное меню:",
+            reply_markup=main_menu_student(),
         )
 
-    await message.answer(text)
 
-
-@dp.message(Command("help"))
-async def cmd_help(message: types.Message):
-    text = (
-        "Доступные команды:\n"
-        "/start — начать\n"
-        "/my_lessons — мои занятия\n"
-        "/settings — напоминания\n"
-        "/help — справка"
-    )
-    await message.answer(text)
-
-
-@dp.message(Command("settings"))
-async def cmd_settings(message: types.Message):
+@dp.message(Command("pay"))
+async def cmd_pay(message: types.Message):
     uid = message.from_user.id
+    if not is_teacher(uid):
+        await message.answer("Только для преподавателя.")
+        return
+
+    await message.answer(
+        "💰 Оплата и напоминания\n\n"
+        "Что отправить?",
+        reply_markup=pay_menu(),
+    )
+
+
+# ---------- Меню (callbacks) ----------
+
+@dp.callback_query(lambda c: c.data == "menu:main")
+async def cb_main(callback: CallbackQuery):
+    uid = callback.from_user.id
+    if is_teacher(uid):
+        text = "Главное меню:"
+        kb = main_menu_teacher()
+    else:
+        text = "Главное меню:"
+        kb = main_menu_student()
+
+    await callback.message.edit_text(
+        text, reply_markup=kb
+    )
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data == "menu:help")
+async def cb_help(callback: CallbackQuery):
+    await callback.message.edit_text(
+        text_help(),
+        reply_markup=back_to_main(),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data == "menu:settings")
+async def cb_settings(callback: CallbackQuery):
+    uid = callback.from_user.id
 
     async with async_session() as session:
         q = select(Student).where(Student.tg_id == uid)
@@ -175,21 +398,26 @@ async def cmd_settings(message: types.Message):
         student = result.scalar_one_or_none()
 
     if not student:
-        await message.answer("Сначала напиши /start")
+        await callback.answer("Сначала /start")
         return
 
     hours = student.custom_hours_before or 2
     text = (
-        f"Сейчас напоминаю {hours_text(hours)}.\n\n"
+        f"⚙️ Напоминания\n\n"
+        f"Сейчас напоминаю "
+        f"{hours_text(hours)}.\n\n"
         "Выбери, за сколько напоминать:"
     )
-    await message.answer(
+    await callback.message.edit_text(
         text, reply_markup=hours_keyboard()
     )
+    await callback.answer()
 
 
-@dp.callback_query(lambda c: c.data.startswith("h:"))
-async def process_hours(callback: CallbackQuery):
+@dp.callback_query(
+    lambda c: c.data.startswith("h:")
+)
+async def cb_hours(callback: CallbackQuery):
     hours = int(callback.data.split(":")[1])
     uid = callback.from_user.id
 
@@ -202,14 +430,20 @@ async def process_hours(callback: CallbackQuery):
             student.custom_hours_before = hours
             await session.commit()
 
-    text = f"Готово! Напомню {hours_text(hours)}."
-    await callback.message.edit_text(text)
+    text = (
+        f"✅ Готово!\n\n"
+        f"Буду напоминать "
+        f"{hours_text(hours)} до занятия."
+    )
+    await callback.message.edit_text(
+        text, reply_markup=back_to_main()
+    )
     await callback.answer()
 
 
-@dp.message(Command("my_lessons"))
-async def cmd_my_lessons(message: types.Message):
-    uid = message.from_user.id
+@dp.callback_query(lambda c: c.data == "menu:lessons")
+async def cb_lessons(callback: CallbackQuery):
+    uid = callback.from_user.id
 
     async with async_session() as session:
         q = select(Student).where(Student.tg_id == uid)
@@ -217,7 +451,7 @@ async def cmd_my_lessons(message: types.Message):
         student = result.scalar_one_or_none()
 
         if not student:
-            await message.answer("Сначала напиши /start")
+            await callback.answer("Сначала /start")
             return
 
         q2 = (
@@ -229,29 +463,37 @@ async def cmd_my_lessons(message: types.Message):
         lessons = result2.scalars().all()
 
     if not lessons:
-        await message.answer("У тебя пока нет занятий.")
+        await callback.message.edit_text(
+            "📅 У тебя пока нет занятий.",
+            reply_markup=back_to_main(),
+        )
+        await callback.answer()
         return
 
     now = now_msk()
-    lines = ["Твои занятия:\n"]
+    lines = ["📅 Твои занятия:\n"]
     for lesson in lessons:
         dt = lesson.datetime_start
         mark = "✓" if dt < now else "•"
-        line = f"{mark} {dt.strftime('%d.%m.%Y %H:%M')}"
+        line = f"{mark} "
+        line += dt.strftime("%d.%m.%Y %H:%M")
         line += f" — {lesson.title}"
         lines.append(line)
 
-    await message.answer("\n".join(lines))
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=back_to_main(),
+    )
+    await callback.answer()
 
 
-@dp.message(Command("add_lesson"))
-async def cmd_add_lesson(
-    message: types.Message,
-    state: FSMContext,
-):
-    uid = message.from_user.id
+# ---------- Меню преподавателя ----------
+
+@dp.callback_query(lambda c: c.data == "menu:add")
+async def cb_add(callback: CallbackQuery):
+    uid = callback.from_user.id
     if not is_teacher(uid):
-        await message.answer("Только для преподавателя.")
+        await callback.answer("Только для преподавателя")
         return
 
     async with async_session() as session:
@@ -262,147 +504,49 @@ async def cmd_add_lesson(
         students = result.scalars().all()
 
     if not students:
-        await message.answer(
-            "Нет учеников. Пусть кто-то напишет /start."
+        await callback.message.edit_text(
+            "Нет учеников. "
+            "Пусть кто-то напишет /start.",
+            reply_markup=back_to_main(),
         )
+        await callback.answer()
         return
 
-    text = "Выбери ученика:"
-    await message.answer(
-        text,
-        reply_markup=students_keyboard(students),
+    lines = ["👥 Выбери ученика:\n"]
+    for i, s in enumerate(students, 1):
+        lines.append(f"{i}. {s.full_name}")
+
+    lines.append("\nНапиши номер (1–"
+                 f"{len(students)}):")
+
+    # сохраним список в state
+    state_data = {
+        f"student_{i}": s.id
+        for i, s in enumerate(students, 1)
+    }
+    state_data["total"] = len(students)
+
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=back_to_main(),
     )
+    await callback.answer()
+
+    # Сохраним через FSM
+    state = dp.fsm.get_context(
+        bot=bot,
+        chat_id=callback.message.chat.id,
+        user_id=uid,
+    )
+    await state.update_data(**state_data)
     await state.set_state(AddLesson.student)
 
 
-@dp.callback_query(
-    lambda c: c.data.startswith("st:"),
-    AddLesson.student,
-)
-async def process_student_btn(
-    callback: CallbackQuery,
-    state: FSMContext,
-):
-    sid = int(callback.data.split(":")[1])
-
-    async with async_session() as session:
-        student = await session.get(Student, sid)
-
-    if not student:
-        await callback.answer("Не найден")
-        return
-
-    await state.update_data(
-        student_id=student.id,
-        student_name=student.full_name,
-    )
-    text = (
-        f"Ученик: {student.full_name}\n\n"
-        "Введи дату и время:\n"
-        "ДД.ММ.ГГГГ ЧЧ:ММ\n"
-        "Например: 15.10.2026 18:30"
-    )
-    await callback.message.edit_text(text)
-    await callback.answer()
-    await state.set_state(AddLesson.dt)
-
-
-@dp.message(AddLesson.student)
-async def process_student_text(
-    message: types.Message,
-    state: FSMContext,
-):
-    try:
-        sid = int(message.text.strip())
-    except ValueError:
-        await message.answer(
-            "Выбери ученика кнопкой выше."
-        )
-        return
-
-    async with async_session() as session:
-        q = select(Student).where(Student.tg_id == sid)
-        result = await session.execute(q)
-        student = result.scalar_one_or_none()
-
-    if not student:
-        await message.answer("Ученик не найден.")
-        await state.clear()
-        return
-
-    await state.update_data(
-        student_id=student.id,
-        student_name=student.full_name,
-    )
-    text = (
-        f"Ученик: {student.full_name}\n\n"
-        "Введи дату и время:\n"
-        "ДД.ММ.ГГГГ ЧЧ:ММ\n"
-        "Например: 15.10.2026 18:30"
-    )
-    await message.answer(text)
-    await state.set_state(AddLesson.dt)
-
-
-@dp.message(AddLesson.dt)
-async def process_dt(
-    message: types.Message,
-    state: FSMContext,
-):
-    try:
-        dt = datetime.strptime(
-            message.text.strip(),
-            "%d.%m.%Y %H:%M",
-        )
-    except ValueError:
-        await message.answer(
-            "Неверный формат. Пример: 15.10.2026 18:30"
-        )
-        return
-
-    await state.update_data(dt=dt)
-    await message.answer(
-        "Введи название занятия "
-        "(или «-», чтобы было «Итальянский»):"
-    )
-    await state.set_state(AddLesson.title)
-
-
-@dp.message(AddLesson.title)
-async def process_title(
-    message: types.Message,
-    state: FSMContext,
-):
-    data = await state.get_data()
-    title = message.text.strip()
-    if title == "-":
-        title = "Итальянский"
-
-    async with async_session() as session:
-        lesson = Lesson(
-            student_id=data["student_id"],
-            datetime_start=data["dt"],
-            title=title,
-        )
-        session.add(lesson)
-        await session.commit()
-
-    dt = data["dt"]
-    text = (
-        "Занятие добавлено!\n\n"
-        f"Ученик: {data['student_name']}\n"
-        f"Дата: {dt.strftime('%d.%m.%Y %H:%M')}\n"
-        f"Название: {title}"
-    )
-    await message.answer(text)
-    await state.clear()
-
-
-@dp.message(Command("list_lessons"))
-async def cmd_list_lessons(message: types.Message):
-    uid = message.from_user.id
+@dp.callback_query(lambda c: c.data == "menu:list")
+async def cb_list(callback: CallbackQuery):
+    uid = callback.from_user.id
     if not is_teacher(uid):
-        await message.answer("Только для преподавателя.")
+        await callback.answer("Только для преподавателя")
         return
 
     async with async_session() as session:
@@ -415,51 +559,65 @@ async def cmd_list_lessons(message: types.Message):
         q2 = select(Student)
         result2 = await session.execute(q2)
         students = result2.scalars().all()
-        students_map = {
+        s_map = {
             s.id: s.full_name for s in students
         }
 
     if not lessons:
-        await message.answer("Занятий пока нет.")
+        await callback.message.edit_text(
+            "📋 Занятий пока нет.",
+            reply_markup=back_to_main(),
+        )
+        await callback.answer()
         return
 
     now = now_msk()
-    future = [l for l in lessons if l.datetime_start >= now]
-    past = [l for l in lessons if l.datetime_start < now]
+    future = [
+        l for l in lessons
+        if l.datetime_start >= now
+    ]
+    past = [
+        l for l in lessons
+        if l.datetime_start < now
+    ]
 
     lines = []
-
     if future:
         lines.append("📅 Предстоящие:\n")
-        for lesson in future:
-            name = students_map.get(
+        for lesson in future[:20]:
+            name = s_map.get(
                 lesson.student_id, "?"
             )
             dt = lesson.datetime_start
-            line = f"• {dt.strftime('%d.%m %H:%M')}"
+            line = "• "
+            line += dt.strftime("%d.%m %H:%M")
             line += f" — {name}"
-            line += f" ({lesson.title})"
             lines.append(line)
 
     if past:
         lines.append("\n✓ Прошедшие:\n")
         for lesson in past[-10:]:
-            name = students_map.get(
+            name = s_map.get(
                 lesson.student_id, "?"
             )
             dt = lesson.datetime_start
-            line = f"✓ {dt.strftime('%d.%m %H:%M')}"
+            line = "✓ "
+            line += dt.strftime("%d.%m %H:%M")
             line += f" — {name}"
             lines.append(line)
 
-    await message.answer("\n".join(lines))
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=back_to_main(),
+    )
+    await callback.answer()
 
 
-@dp.message(Command("stats"))
-async def cmd_stats(message: types.Message):
-    uid = message.from_user.id
+@dp.callback_query(lambda c: c.data == "menu:stats")
+async def cb_stats(callback: CallbackQuery):
+    uid = callback.from_user.id
     if not is_teacher(uid):
-        await message.answer("Только для преподавателя.")
+        await callback.answer("Только для преподавателя")
         return
 
     async with async_session() as session:
@@ -477,8 +635,14 @@ async def cmd_stats(message: types.Message):
     lines.append(f"Учеников: {len(students)}")
     lines.append(f"Всего занятий: {len(lessons)}")
 
-    done = [l for l in lessons if l.datetime_start < now]
-    future = [l for l in lessons if l.datetime_start >= now]
+    done = [
+        l for l in lessons
+        if l.datetime_start < now
+    ]
+    future = [
+        l for l in lessons
+        if l.datetime_start >= now
+    ]
     lines.append(f"Проведено: {len(done)}")
     lines.append(f"Предстоит: {len(future)}")
 
@@ -494,16 +658,307 @@ async def cmd_stats(message: types.Message):
             l for l in s_lessons
             if l.datetime_start < now
         ])
-        paid = s.paid_lessons or 0
-        left = paid - s_done
-        lines.append(
-            f"• {s.full_name}: "
-            f"{s_done} проведено, "
-            f"{left} осталось"
+        line = f"• {s.full_name}: "
+        line += f"{s_done} занятий"
+        lines.append(line)
+
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=back_to_main(),
+    )
+    await callback.answer()
+
+
+# ---------- Оплата ----------
+
+@dp.callback_query(lambda c: c.data == "menu:pay")
+async def cb_pay(callback: CallbackQuery):
+    uid = callback.from_user.id
+    if not is_teacher(uid):
+        await callback.answer("Только для преподавателя")
+        return
+
+    await callback.message.edit_text(
+        "💰 Оплата и напоминания\n\n"
+        "Что отправить?",
+        reply_markup=pay_menu(),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(
+    lambda c: c.data in ("pay:after", "pay:end")
+)
+async def cb_pay_choose(
+    callback: CallbackQuery,
+    state: FSMContext,
+):
+    uid = callback.from_user.id
+    if not is_teacher(uid):
+        await callback.answer("Только для преподавателя")
+        return
+
+    mode = callback.data.split(":")[1]
+
+    async with async_session() as session:
+        q = select(Student).where(
+            Student.tg_id != TEACHER_ID
+        )
+        result = await session.execute(q)
+        students = result.scalars().all()
+
+    if not students:
+        await callback.message.edit_text(
+            "Нет учеников.",
+            reply_markup=back_to_main("menu:pay"),
+        )
+        await callback.answer()
+        return
+
+    lines = ["👥 Кому отправить?\n"]
+    for i, s in enumerate(students, 1):
+        lines.append(f"{i}. {s.full_name}")
+
+    lines.append(
+        f"\nНапиши номер "
+        f"(1–{len(students)}):"
+    )
+
+    data = {"mode": mode, "total": len(students)}
+    for i, s in enumerate(students, 1):
+        data[f"st_{i}"] = s.tg_id
+
+    await state.update_data(**data)
+    await state.set_state(PayFlow.choosing_student)
+
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=back_to_main("menu:pay"),
+    )
+    await callback.answer()
+
+
+@dp.message(PayFlow.choosing_student)
+async def pay_send(
+    message: types.Message,
+    state: FSMContext,
+):
+    uid = message.from_user.id
+    if not is_teacher(uid):
+        return
+
+    try:
+        num = int(message.text.strip())
+    except ValueError:
+        await message.answer(
+            "Напиши номер ученика цифрой."
+        )
+        return
+
+    data = await state.get_data()
+    total = data.get("total", 0)
+    if num < 1 or num > total:
+        await message.answer(
+            f"Номер от 1 до {total}."
+        )
+        return
+
+    student_tg = data.get(f"st_{num}")
+    mode = data.get("mode")
+
+    if mode == "after":
+        text = text_pay_after()
+    else:
+        text = text_pay_end()
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="📋 Посмотреть абонементы",
+            callback_data="show:tariffs",
+        ),
+    ]])
+
+    try:
+        await bot.send_message(
+            student_tg, text, reply_markup=kb
+        )
+    except Exception as e:
+        await message.answer(
+            f"Ошибка отправки: {e}"
+        )
+        await state.clear()
+        return
+
+    await state.clear()
+    await message.answer(
+        "✅ Сообщение отправлено.",
+        reply_markup=back_to_main("menu:pay"),
+    )
+
+
+# ---------- Ученик: тарифы ----------
+
+@dp.callback_query(
+    lambda c: c.data == "show:tariffs"
+)
+async def cb_show_tariffs(
+    callback: CallbackQuery,
+):
+    await callback.message.edit_text(
+        text_tariffs(),
+        reply_markup=tariffs_keyboard(),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(
+    lambda c: c.data.startswith("tar:")
+)
+async def cb_tariff_chosen(
+    callback: CallbackQuery,
+):
+    tar = callback.data.split(":")[1]
+
+    tariffs = {
+        "30_1": "30 мин, 1 раз/нед — 2000 ₽",
+        "30_2": "30 мин, 2 раза/нед — 4000 ₽",
+        "60_1": "60 мин, 1 раз/нед — 4000 ₽",
+        "60_2": "60 мин, 2 раза/нед — 9000 ₽",
+    }
+    chosen = tariffs.get(tar, "?")
+    user = callback.from_user
+
+    # Уведомление преподавателю
+    text = (
+        "🔔 Заявка на абонемент\n\n"
+        f"Ученик: {user.full_name}\n"
+        f"Username: @{user.username or '—'}\n"
+        f"Тариф: {chosen}\n\n"
+        "Свяжись с учеником."
+    )
+
+    try:
+        await bot.send_message(TEACHER_ID, text)
+    except Exception as e:
+        logging.error(f"Ошибка уведомления: {e}")
+
+    # Ученику
+    await callback.message.edit_text(
+        "✅ Заявка отправлена!\n\n"
+        "Я свяжусь с тобой, "
+        "чтобы подтвердить абонемент.",
+    )
+    await callback.answer()
+
+
+# ---------- Добавление занятия (текстовые номера) ----------
+
+@dp.message(AddLesson.student)
+async def add_student_num(
+    message: types.Message,
+    state: FSMContext,
+):
+    try:
+        num = int(message.text.strip())
+    except ValueError:
+        await message.answer(
+            "Напиши номер ученика цифрой."
+        )
+        return
+
+    data = await state.get_data()
+    total = data.get("total", 0)
+    if num < 1 or num > total:
+        await message.answer(
+            f"Номер от 1 до {total}."
+        )
+        return
+
+    student_id = data.get(f"student_{num}")
+
+    async with async_session() as session:
+        student = await session.get(
+            Student, student_id
         )
 
-    await message.answer("\n".join(lines))
+    if not student:
+        await message.answer("Ученик не найден.")
+        await state.clear()
+        return
 
+    await state.update_data(
+        sid=student.id,
+        sname=student.full_name,
+    )
+    text = (
+        f"Ученик: {student.full_name}\n\n"
+        "Введи дату и время:\n"
+        "ДД.ММ.ГГГГ ЧЧ:ММ\n"
+        "Например: 15.10.2026 18:30"
+    )
+    await message.answer(text)
+    await state.set_state(AddLesson.dt)
+
+
+@dp.message(AddLesson.dt)
+async def add_dt(
+    message: types.Message,
+    state: FSMContext,
+):
+    try:
+        dt = datetime.strptime(
+            message.text.strip(),
+            "%d.%m.%Y %H:%M",
+        )
+    except ValueError:
+        await message.answer(
+            "Неверный формат. "
+            "Пример: 15.10.2026 18:30"
+        )
+        return
+
+    await state.update_data(dt=dt)
+    await message.answer(
+        "Введи название занятия "
+        "(или «-», чтобы было «Итальянский»):"
+    )
+    await state.set_state(AddLesson.title)
+
+
+@dp.message(AddLesson.title)
+async def add_title(
+    message: types.Message,
+    state: FSMContext,
+):
+    data = await state.get_data()
+    title = message.text.strip()
+    if title == "-":
+        title = "Итальянский"
+
+    async with async_session() as session:
+        lesson = Lesson(
+            student_id=data["sid"],
+            datetime_start=data["dt"],
+            title=title,
+        )
+        session.add(lesson)
+        await session.commit()
+
+    dt = data["dt"]
+    text = (
+        "✅ Занятие добавлено!\n\n"
+        f"Ученик: {data['sname']}\n"
+        f"Дата: {dt.strftime('%d.%m.%Y %H:%M')}\n"
+        f"Название: {title}"
+    )
+    await message.answer(
+        text,
+        reply_markup=main_menu_teacher(),
+    )
+    await state.clear()
+
+
+# ---------- /set_paid (пока вручную через ID) ----------
 
 @dp.message(Command("set_paid"))
 async def cmd_set_paid(message: types.Message):
@@ -516,7 +971,8 @@ async def cmd_set_paid(message: types.Message):
     if len(args) < 3:
         await message.answer(
             "Формат: /set_paid ID количество\n"
-            "Например: /set_paid 803167669 8"
+            "Например: /set_paid 803167669 8\n\n"
+            "(скоро сделаем через кнопки)"
         )
         return
 
@@ -528,7 +984,9 @@ async def cmd_set_paid(message: types.Message):
         return
 
     async with async_session() as session:
-        q = select(Student).where(Student.tg_id == sid)
+        q = select(Student).where(
+            Student.tg_id == sid
+        )
         result = await session.execute(q)
         student = result.scalar_one_or_none()
 
@@ -545,6 +1003,8 @@ async def cmd_set_paid(message: types.Message):
         f"оплачено {amount} занятий"
     )
 
+
+# ---------- Webhook ----------
 
 async def health(request):
     return web.Response(text="OK")
