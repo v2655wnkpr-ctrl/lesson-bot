@@ -45,6 +45,16 @@ def main_menu_teacher():
         ],
         [
             InlineKeyboardButton(
+                text="🔄 Перенести",
+                callback_data="menu:reschedule",
+            ),
+            InlineKeyboardButton(
+                text="🗑 Удалить",
+                callback_data="menu:delete",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
                 text="📋 Все занятия",
                 callback_data="menu:list",
             ),
@@ -57,6 +67,10 @@ def main_menu_teacher():
             InlineKeyboardButton(
                 text="💰 Оплата",
                 callback_data="menu:pay",
+            ),
+            InlineKeyboardButton(
+                text="💳 set_paid",
+                callback_data="sp:open",
             ),
         ],
         [
@@ -182,19 +196,19 @@ def tariffs_keyboard():
     ]
     return InlineKeyboardMarkup(
         inline_keyboard=b
-    )
+   act )
 
 
-def card_keyboard(student_id: int):
+def card_keyboard(student:_id: int):
     b = [
-        [
+       pay [
             InlineKeyboardButton(
                 text="➕ Занятие",
                 callback_data=f"act:add:{student_id}",
             ),
             InlineKeyboardButton(
-                text="💰 Оплата",
-                callback_data=f"act:pay:{student_id}",
+                text="💰 Оплата:{",
+                callback_data=f"student_id}",
             ),
         ],
         [
@@ -207,14 +221,17 @@ def card_keyboard(student_id: int):
     return InlineKeyboardMarkup(
         inline_keyboard=b
     )
+
+
 def set_paid_students_keyboard(students):
     b = []
-    for i, s in enumerate(students, 1):
-        un = s.username or "—"
-        text = f"{i}. {s.full_name}"
+    for s in students:
+        name = s.full_name
+        if len(name) > 28:
+            name = name[:28] + "..."
         b.append([
             InlineKeyboardButton(
-                text=text,
+                text=name,
                 callback_data=f"sp:{s.id}",
             )
         ])
@@ -260,13 +277,15 @@ def set_paid_amounts_keyboard(sid: int):
         [
             InlineKeyboardButton(
                 text="⬅️ Назад",
-                callback_data="sp:back",
+                callback_data="sp:open",
             ),
         ],
     ]
     return InlineKeyboardMarkup(
         inline_keyboard=b
     )
+
+
 def paid_button_keyboard():
     b = [[
         InlineKeyboardButton(
@@ -282,7 +301,7 @@ def paid_button_keyboard():
 def back_from_paid_keyboard():
     b = [[
         InlineKeyboardButton(
-            text="⬅️ Назад",
+            text="⬅️ Отмена",
             callback_data="paid:back",
         ),
     ]]
@@ -293,7 +312,7 @@ def back_from_paid_keyboard():
 
 def lessons_action_keyboard(lessons, action):
     b = []
-    for les in lessons[:20]:
+    for les in lessons[:15]:
         dt = les.datetime_start
         text = dt.strftime("%d.%m %H:%M")
         text += f" — {les.title}"
@@ -323,32 +342,6 @@ def confirm_delete_keyboard(lid: int):
             ),
             InlineKeyboardButton(
                 text="❌ Отмена",
-                callback_data="menu:main",
-            ),
-        ],
-    ]
-    return InlineKeyboardMarkup(
-        inline_keyboard=b
-    )
-
-
-def pay_from_card_keyboard(sid: int):
-    b = [
-        [
-            InlineKeyboardButton(
-                text="💳 Оплата после урока",
-                callback_data=f"pc:after:{sid}",
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="⏰ Абонемент закончился",
-                callback_data=f"pc:end:{sid}",
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="⬅️ Назад",
                 callback_data="menu:main",
             ),
         ],
