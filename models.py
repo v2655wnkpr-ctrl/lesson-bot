@@ -32,12 +32,10 @@ class Student(Base):
         Integer, default=2
     )
 
-    # Сколько занятий оплачено (для напоминания)
     paid_lessons: Mapped[int] = mapped_column(
         Integer, default=0
     )
 
-    # Когда последний раз напоминали об оплате
     last_payment_reminder: Mapped[datetime | None] = (
         mapped_column(DateTime, nullable=True)
     )
@@ -61,8 +59,6 @@ class Lesson(Base):
     title: Mapped[str] = mapped_column(
         String(200), default="Итальянский"
     )
-
-    # Проведено ли занятие (для счётчика)
     is_done: Mapped[bool] = mapped_column(
         Boolean, default=False
     )
