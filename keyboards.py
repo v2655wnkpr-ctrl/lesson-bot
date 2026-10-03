@@ -287,12 +287,20 @@ def set_paid_amounts_keyboard(sid: int):
 
 
 def paid_button_keyboard():
-    b = [[
-        InlineKeyboardButton(
-            text="💳 Я оплатил(а)",
-            callback_data="paid:click",
-        ),
-    ]]
+    b = [
+        [
+            InlineKeyboardButton(
+                text="📋 Посмотреть абонементы",
+                callback_data="show:tariffs",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="💳 Я оплатил(а)",
+                callback_data="paid:click",
+            ),
+        ],
+    ]
     return InlineKeyboardMarkup(
         inline_keyboard=b
     )
