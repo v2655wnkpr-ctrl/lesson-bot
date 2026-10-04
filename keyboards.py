@@ -340,7 +340,7 @@ def lessons_action_keyboard(lessons, action):
         inline_keyboard=b
     )
 
-
+ 
 def confirm_delete_keyboard(lid: int):
     b = [
         [
