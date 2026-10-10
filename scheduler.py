@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from database import async_session
 from models import Student, Lesson
+from keyboards import transfer_keyboard
 
 
 MSK = ZoneInfo("Europe/Moscow")
@@ -189,10 +190,16 @@ async def send_reminder(bot, student, lesson):
     text = (
         "🔔 Напоминание!\n\n"
         f"Сегодня в {dt.strftime('%H:%M')} — "
-        f"{lesson.title}"
+        f"{lesson.title}\n\n"
+        "Если не сможешь прийти — нажми "
+        "кнопку ниже и напиши причину 👇"
     )
     try:
-        await bot.send_message(student.tg_id, text)
+        await bot.send_message(
+            student.tg_id,
+            text,
+            reply_markup=transfer_keyboard(),
+        )
     except Exception as e:
         logging.error(f"Ош: {e}")
 
