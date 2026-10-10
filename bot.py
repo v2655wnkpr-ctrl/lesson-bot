@@ -31,6 +31,10 @@ from texts import (
     text_pay_after_button,
     text_pay_end_button,
     text_payment_received,
+    text_welcome,
+    text_transfer_ask,
+    text_transfer_sent,
+    text_transfer_cancel,
 )
 from keyboards import (
     main_menu_student,
@@ -44,6 +48,7 @@ from keyboards import (
     set_paid_amounts_keyboard,
     paid_button_keyboard,
     back_from_paid_keyboard,
+    transfer_cancel_keyboard,
     lessons_action_keyboard,
     confirm_delete_keyboard,
     TEACHER_LINK,
@@ -95,6 +100,10 @@ class PaymentProof(StatesGroup):
     waiting_photo = State()
 
 
+class TransferFlow(StatesGroup):
+    reason = State()
+
+
 def is_teacher(uid: int) -> bool:
     return uid == TEACHER_ID
 
@@ -103,6 +112,7 @@ def is_teacher(uid: int) -> bool:
 async def cmd_start(message: types.Message):
     user = message.from_user
     uid = user.id
+    is_new = False
 
     async with async_session() as session:
         q = select(Student).where(
@@ -112,6 +122,7 @@ async def cmd_start(message: types.Message):
         student = result.scalar_one_or_none()
 
         if student is None:
+            is_new = True
             student = Student(
                 tg_id=uid,
                 full_name=user.full_name,
@@ -135,6 +146,13 @@ async def cmd_start(message: types.Message):
                 except Exception as e:
                     logging.error(f"Ош: {e}")
 
+    if is_new and not is_teacher(uid):
+        await message.answer(
+            text_welcome(),
+            reply_markup=main_menu_student(),
+        )
+        return
+
     if is_teacher(uid):
         text = (
             "👋 Привет, преподаватель!\n\n"
@@ -144,7 +162,7 @@ async def cmd_start(message: types.Message):
     else:
         text = (
             f"👋 Привет, {user.full_name}!\n\n"
-            "Помогу следить за занятиями."
+            "Выбери действие:"
         )
         kb = main_menu_student()
 
@@ -1076,6 +1094,95 @@ async def receive_photo(
 
     await message.answer(
         text_payment_received(),
+        reply_markup=back_to_main(),
+    )
+    await state.clear()
+
+
+@dp.callback_query(
+    lambda c: c.data == "transfer:click"
+)
+async def cb_transfer_click(
+    callback: CallbackQuery,
+    state: FSMContext,
+):
+    await callback.message.edit_text(
+        text_transfer_ask(),
+        reply_markup=transfer_cancel_keyboard(),
+    )
+    await callback.answer()
+    await state.set_state(TransferFlow.reason)
+
+
+@dp.callback_query(
+    lambda c: c.data == "transfer:cancel"
+)
+async def cb_transfer_cancel(
+    callback: CallbackQuery,
+    state: FSMContext,
+):
+    await callback.message.edit_text(
+        text_transfer_cancel(),
+    )
+    await callback.answer()
+    await state.clear()
+
+
+@dp.message(TransferFlow.reason)
+async def transfer_reason(
+    message: types.Message,
+    state: FSMContext,
+):
+    user = message.from_user
+    reason = message.text.strip()
+
+    async with async_session() as session:
+        q = select(Student).where(
+            Student.tg_id == user.id
+        )
+        r = await session.execute(q)
+        student = r.scalar_one_or_none()
+
+        if not student:
+            await message.answer("Сначала /start")
+            await state.clear()
+            return
+
+        now = now_msk()
+        q2 = (
+            select(Lesson)
+            .where(Lesson.student_id == student.id)
+            .where(Lesson.datetime_start >= now)
+            .order_by(Lesson.datetime_start)
+        )
+        r2 = await session.execute(q2)
+        lesson = r2.scalars().first()
+
+    if lesson:
+        dt = lesson.datetime_start
+        les_info = (
+            f"{dt.strftime('%d.%m.%Y %H:%M')} — "
+            f"{lesson.title}"
+        )
+    else:
+        les_info = "—"
+
+    un = user.username or "—"
+    text = (
+        "🔄 Запрос на перенос\n\n"
+        f"Ученик: {user.full_name}\n"
+        f"@{un}\n"
+        f"ID: {user.id}\n\n"
+        f"Занятие: {les_info}\n"
+        f"Причина: {reason}"
+    )
+    try:
+        await bot.send_message(TEACHER_ID, text)
+    except Exception as e:
+        logging.error(f"Ош: {e}")
+
+    await message.answer(
+        text_transfer_sent(),
         reply_markup=back_to_main(),
     )
     await state.clear()
