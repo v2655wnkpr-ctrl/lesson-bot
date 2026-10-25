@@ -20,12 +20,7 @@ from dotenv import load_dotenv
 from sqlalchemy import select
 
 from database import init_db, async_session
-from models import (
-    Student,
-    Lesson,
-    Homework,
-    HomeworkDone,
-)
+from models import Student, Lesson
 from scheduler import start_scheduler, now_msk
 from texts import (
     text_pay_after,
@@ -100,12 +95,6 @@ class PaymentProof(StatesGroup):
 
 class TransferFlow(StatesGroup):
     reason = State()
-
-class AddHomework(StatesGroup):
-    title = State()
-    text = State()
-    media = State()
-    submit = State()
 
 def is_teacher(uid: int) -> bool:
     return uid == TEACHER_ID
@@ -1112,14 +1101,15 @@ async def add_student(message: types.Message, state: FSMContext):
 
 @dp.message(AddLesson.dt)
 async def add_dt(message: types.Message, state: FSMContext):
-    try:
-        dt = datetime.strptime(
-            message.text.strip(), "%d.%m.%Y %H:%M"
+       try:
+        dt = datetime.strptime text(
+            message.text.strip(), "%d.%m.%Y %H:%M ="
         )
     except ValueError:
-        await message.answer("Формат: 15.10.2026 18:30")
+        await message (
+.answer("Формат: 15.       10.2026 18:30")
         return
-    dup = await check_duplicate_lesson(dt)
+    dup = await check_du fplicate_lesson(dt)
     if dup:
         txt = (
             f"⚠️ На это время уже есть "
@@ -1168,8 +1158,7 @@ async def cb_stdel_ask(callback: CallbackQuery):
     if not student:
         await callback.answer("Не найден")
         return
-    text = (
-        f"Удалить ученика?\n\n"
+"Удалить ученика?\n\n"
         f"{student.full_name}\n\n"
         f"⚠️ Все данные удалятся."
     )
@@ -1205,194 +1194,6 @@ async def cb_stdel_confirm(callback: CallbackQuery):
         await bot.send_message(tg, txt)
     except Exception:
         pass
-
-# ---------- ДОМАШКИ ----------
-@dp.callback_query(lambda c: c.data == "menu:hw")
-async def cb_hw_menu(callback: CallbackQuery):
-    if not is_teacher(callback.from_user.id):
-        return
-    b = [
-        [
-            InlineKeyboardButton(
-                text="➕ Создать ДЗ", callback_data="hw:create"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="⬅️ Назад", callback_data="menu:main"
-            )
-        ],
-    ]
-    kb = InlineKeyboardMarkup(inline_keyboard=b)
-    await callback.message.edit_text("📚 Домашние задания", reply_markup=kb)
-    await callback.answer()
-
-@dp.callback_query(lambda c: c.data == "hw:create")
-async def cb_hw_create(callback: CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("Введи название темы ДЗ:")
-    await state.set_state(AddHomework.title)
-    await callback.answer()
-
-@dp.message(AddHomework.title)
-async def hw_title(message: types.Message, state: FSMContext):
-    await state.update_data(title=message.text)
-    await message.answer("Теперь введи текст задания:")
-    await state.set_state(AddHomework.text)
-
-@dp.message(AddHomework.text)
-async def hw_text(message: types.Message, state: FSMContext):
-    await state.update_data(text=message.text)
-    await message.answer(
-        "Прикрепи материал (фото/видео/файл/ссылку) или «-»:"
-    )
-    await state.set_state(AddHomework.media)
-
-@dp.message(AddHomework.media)
-async def hw_media(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    m_type, m_id = None, None
-    if message.photo:
-        m_type = "photo"
-        m_id = message.photo[-1].file_id
-    elif message.video:
-        m_type = "video"
-        m_id = message.video.file_id
-    elif message.document:
-        m_type = "document"
-        m_id = message.document.file_id
-    elif message.text and message.text.startswith("http"):
-        m_type = "link"
-        m_id = message.text.strip()
-    elif message.text == "-":
-        pass
-    else:
-        await message.answer("Пришли материал, ссылку или «-»:")
-        return
-    async with async_session() as session:
-        hw = Homework(
-            title=data["title"], text=data["text"],
-            media_type=m_type, media_id=m_id
-        )
-        session.add(hw)
-        await session.commit()
-    await message.answer(
-        "✅ ДЗ создано!", reply_markup=main_menu_teacher()
-    )
-    await state.clear()
-
-@dp.callback_query(lambda c: c.data == "hw:list")
-async def cb_hw_list(callback: CallbackQuery):
-    async with async_session() as session:
-        q = select(Homework).order_by(Homework.id.desc())
-        res = await session.execute(q)
-        hws = res.scalars().all()
-    if not hws:
-        await callback.message.edit_text(
-            "Пока нет ДЗ.", reply_markup=back_to_main()
-        )
-        await callback.answer()
-        return
-    b = []
-    for hw in hws:
-        cb = f"hw:view:{hw.id}"
-        b.append([
-            InlineKeyboardButton(text=hw.title, callback_data=cb)
-        ])
-    b.append([
-        InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:main")
-    ])
-    kb = InlineKeyboardMarkup(inline_keyboard=b)
-    await callback.message.edit_text(
-        "📚 Выбери тему:", reply_markup=kb
-    )
-    await callback.answer()
-
-@dp.callback_query(lambda c: c.data.startswith("hw:view:"))
-async def cb_hw_view(callback: CallbackQuery):
-    hw_id = int(callback.data.split(":")[2])
-    async with async_session() as session:
-        hw = await session.get(Homework, hw_id)
-        q = select(Student).where(Student.tg_id == callback.from_user.id)
-        r = await session.execute(q)
-        st = r.scalar_one_or_none()
-        done = None
-        if st:
-            q2 = select(HomeworkDone).where(
-                HomeworkDone.homework_id == hw_id,
-                HomeworkDone.student_id == st.id
-            )
-            r2 = await session.execute(q2)
-            done = r2.scalar_one_or_none()
-    if not hw:
-        await callback.answer("Не найдено")
-        return
-    text = f"📚 {hw.title}\n\n{hw.text}"
-    b = []
-    if not done:
-        cb = f"hw:done:{hw.id}"
-        b.append([
-            InlineKeyboardButton(text="✅ Я выполнил(а)", callback_data=cb)
-        ])
-    else:
-        text += "\n\n✅ Вы уже отметили это задание."
-    b.append([
-        InlineKeyboardButton(text="⬅️ Назад", callback_data="hw:list")
-    ])
-    kb = InlineKeyboardMarkup(inline_keyboard=b)
-    try:
-        if hw.media_type == "photo":
-            await callback.message.answer_photo(
-                hw.media_id, caption=text, reply_markup=kb
-            )
-        elif hw.media_type == "video":
-            await callback.message.answer_video(
-                hw.media_id, caption=text, reply_markup=kb
-            )
-        elif hw.media_type == "document":
-            await callback.message.answer_document(
-                hw.media_id, caption=text, reply_markup=kb
-            )
-        elif hw.media_type == "link":
-            text += f"\n\n🎥 Материал: {hw.media_id}"
-            await callback.message.edit_text(text, reply_markup=kb)
-        else:
-            await callback.message.edit_text(text, reply_markup=kb)
-    except Exception as e:
-        logging.error(f"Ошибка: {e}")
-        await callback.message.edit_text(text, reply_markup=kb)
-    await callback.answer()
-
-@dp.callback_query(lambda c: c.data.startswith("hw:done:"))
-async def cb_hw_done(callback: CallbackQuery):
-    hw_id = int(callback.data.split(":")[2])
-    uid = callback.from_user.id
-    async with async_session() as session:
-        q = select(Student).where(Student.tg_id == uid)
-        r = await session.execute(q)
-        st = r.scalar_one_or_none()
-        hw = await session.get(Homework, hw_id)
-        if st and hw:
-            q2 = select(HomeworkDone).where(
-                HomeworkDone.homework_id == hw_id,
-                HomeworkDone.student_id == st.id
-            )
-            r2 = await session.execute(q2)
-            if not r2.scalar_one_or_none():
-                done = HomeworkDone(
-                    homework_id=hw_id, student_id=st.id
-                )
-                session.add(done)
-                await session.commit()
-                txt = (
-                    f"📚 {st.full_name} "
-                    f"выполнил(а) ДЗ: {hw.title}"
-                )
-                await bot.send_message(TEACHER_ID, txt)
-    await callback.message.edit_text(
-        "✅ Отлично! Я передал преподавателю.",
-        reply_markup=back_to_main("hw:list")
-    )
-    await callback.answer()
 
 async def health(request):
     return web.Response(text="OK")
