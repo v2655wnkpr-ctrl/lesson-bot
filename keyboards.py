@@ -33,12 +33,6 @@ def main_menu_student():
         ],
         [
             InlineKeyboardButton(
-                text="📚 Домашки",
-                callback_data="hw:list",
-            ),
-        ],
-        [
-            InlineKeyboardButton(
                 text="Связаться",
                 url=TEACHER_LINK,
                 icon_custom_emoji_id=E_CONTACT,
@@ -58,7 +52,7 @@ def main_menu_teacher():
     b = [
         [
             InlineKeyboardButton(
-                text="➕ Занятие",
+                text="➕ Добавить занятие",
                 callback_data="menu:add",
             ),
         ],
@@ -95,12 +89,6 @@ def main_menu_teacher():
                 text="set_paid",
                 callback_data="sp:open",
                 icon_custom_emoji_id=E_SETPAID,
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="📚 Домашки",
-                callback_data="menu:hw",
             ),
         ],
         [
