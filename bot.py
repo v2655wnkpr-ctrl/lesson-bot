@@ -20,7 +20,12 @@ from dotenv import load_dotenv
 from sqlalchemy import select
 
 from database import init_db, async_session
-from models import Student, Lesson
+from models import (
+    Student,
+    Lesson,
+    Homework,
+    HomeworkDone,
+)
 from scheduler import start_scheduler, now_msk
 from texts import (
     text_pay_after,
@@ -51,9 +56,9 @@ from keyboards import (
     transfer_cancel_keyboard,
     lessons_action_keyboard,
     confirm_delete_keyboard,
+    confirm_delete_student_keyboard,
     TEACHER_LINK,
 )
-
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -66,8 +71,7 @@ if not BOT_TOKEN:
 logging.basicConfig(level=logging.INFO)
 
 BASE_WEBHOOK_URL = os.getenv(
-    "RENDER_EXTERNAL_URL",
-    "https://localhost",
+    "RENDER_EXTERNAL_URL", "https://localhost"
 )
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_SECRET = "my-secret-token"
@@ -77,36 +81,34 @@ WEB_SERVER_PORT = int(os.getenv("PORT", 8080))
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-
 class AddLesson(StatesGroup):
     student = State()
     dt = State()
     title = State()
 
-
 class PayFlow(StatesGroup):
     choosing_student = State()
-
 
 class FindStudent(StatesGroup):
     query = State()
 
-
 class RescheduleFlow(StatesGroup):
     dt = State()
-
 
 class PaymentProof(StatesGroup):
     waiting_photo = State()
 
-
 class TransferFlow(StatesGroup):
     reason = State()
 
+class AddHomework(StatesGroup):
+    title = State()
+    text = State()
+    media = State()
+    submit = State()
 
 def is_teacher(uid: int) -> bool:
     return uid == TEACHER_ID
-
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
@@ -115,9 +117,7 @@ async def cmd_start(message: types.Message):
     is_new = False
 
     async with async_session() as session:
-        q = select(Student).where(
-            Student.tg_id == uid
-        )
+        q = select(Student).where(Student.tg_id == uid)
         result = await session.execute(q)
         student = result.scalar_one_or_none()
 
@@ -140,9 +140,7 @@ async def cmd_start(message: types.Message):
                     f"ID: {uid}"
                 )
                 try:
-                    await bot.send_message(
-                        TEACHER_ID, text
-                    )
+                    await bot.send_message(TEACHER_ID, text)
                 except Exception as e:
                     logging.error(f"Ош: {e}")
 
@@ -168,7 +166,6 @@ async def cmd_start(message: types.Message):
 
     await message.answer(text, reply_markup=kb)
 
-
 @dp.message(Command("menu"))
 async def cmd_menu(message: types.Message):
     uid = message.from_user.id
@@ -176,18 +173,13 @@ async def cmd_menu(message: types.Message):
         kb = main_menu_teacher()
     else:
         kb = main_menu_student()
-    await message.answer(
-        "Главное меню:", reply_markup=kb
-    )
-
+    await message.answer("Главное меню:", reply_markup=kb)
 
 @dp.message(Command("settings"))
 async def cmd_settings(message: types.Message):
     uid = message.from_user.id
     async with async_session() as session:
-        q = select(Student).where(
-            Student.tg_id == uid
-        )
+        q = select(Student).where(Student.tg_id == uid)
         result = await session.execute(q)
         student = result.scalar_one_or_none()
 
@@ -201,10 +193,7 @@ async def cmd_settings(message: types.Message):
         f"Сейчас {hours_text(hours)}.\n\n"
         "Выбери:"
     )
-    await message.answer(
-        text, reply_markup=hours_keyboard()
-    )
-
+    await message.answer(text, reply_markup=hours_keyboard())
 
 @dp.message(Command("set_paid"))
 async def cmd_set_paid(message: types.Message):
@@ -214,9 +203,7 @@ async def cmd_set_paid(message: types.Message):
         return
 
     async with async_session() as session:
-        q = select(Student).where(
-            Student.tg_id != TEACHER_ID
-        )
+        q = select(Student).where(Student.tg_id != TEACHER_ID)
         r = await session.execute(q)
         students = r.scalars().all()
 
@@ -225,13 +212,9 @@ async def cmd_set_paid(message: types.Message):
         return
 
     await message.answer(
-        "💰 Отметить оплату\n\n"
-        "Выбери ученика:",
-        reply_markup=set_paid_students_keyboard(
-            students
-        ),
+        "💰 Отметить оплату\n\nВыбери ученика:",
+        reply_markup=set_paid_students_keyboard(students),
     )
-
 
 @dp.message(Command("pay"))
 async def cmd_pay(message: types.Message):
@@ -240,15 +223,11 @@ async def cmd_pay(message: types.Message):
         await message.answer("Только для препода.")
         return
     await message.answer(
-        "💰 Оплата и напоминания\n\n"
-        "Что отправить?",
+        "💰 Оплата и напоминания\n\nЧто отправить?",
         reply_markup=pay_menu(),
     )
 
-
-@dp.callback_query(
-    lambda c: c.data == "sp:open"
-)
+@dp.callback_query(lambda c: c.data == "sp:open")
 async def cb_sp_open(callback: CallbackQuery):
     uid = callback.from_user.id
     if not is_teacher(uid):
@@ -256,9 +235,7 @@ async def cb_sp_open(callback: CallbackQuery):
         return
 
     async with async_session() as session:
-        q = select(Student).where(
-            Student.tg_id != TEACHER_ID
-        )
+        q = select(Student).where(Student.tg_id != TEACHER_ID)
         r = await session.execute(q)
         students = r.scalars().all()
 
@@ -267,65 +244,47 @@ async def cb_sp_open(callback: CallbackQuery):
         return
 
     await callback.message.edit_text(
-        "💰 Отметить оплату\n\n"
-        "Выбери ученика:",
-        reply_markup=set_paid_students_keyboard(
-            students
-        ),
+        "💰 Отметить оплату\n\nВыбери ученика:",
+        reply_markup=set_paid_students_keyboard(students),
     )
     await callback.answer()
 
-
-@dp.callback_query(
-    lambda c: c.data.startswith("sp:")
-)
+@dp.callback_query(lambda c: c.data.startswith("sp:"))
 async def cb_set_paid(callback: CallbackQuery):
     uid = callback.from_user.id
     if not is_teacher(uid):
         await callback.answer("Нет доступа")
         return
-
     if callback.data == "sp:open":
         await cb_sp_open(callback)
         return
-
     sid = int(callback.data.split(":")[1])
-
     async with async_session() as session:
         student = await session.get(Student, sid)
-
     if not student:
         await callback.answer("Не найден")
         return
-
     paid = student.paid_lessons or 0
     text = (
         f"💰 {student.full_name}\n\n"
         f"Сейчас оплачено: {paid}\n\n"
         "Выбери новое количество:"
     )
-    await callback.message.edit_text(
-        text,
-        reply_markup=set_paid_amounts_keyboard(sid),
-    )
+    kb = set_paid_amounts_keyboard(sid, paid)
+    await callback.message.edit_text(text, reply_markup=kb)
     await callback.answer()
 
-
-@dp.callback_query(
-    lambda c: c.data.startswith("spa:")
-)
-async def cb_set_paid_amount(
-    callback: CallbackQuery,
-):
+@dp.callback_query(lambda c: c.data.startswith("spa:"))
+async def cb_set_paid_amount(callback: CallbackQuery):
     uid = callback.from_user.id
     if not is_teacher(uid):
         await callback.answer("Нет доступа")
         return
-
     parts = callback.data.split(":")
     sid = int(parts[1])
     amount = int(parts[2])
-
+    if amount < 0:
+        amount = 0
     async with async_session() as session:
         student = await session.get(Student, sid)
         if not student:
@@ -334,117 +293,81 @@ async def cb_set_paid_amount(
         student.paid_lessons = amount
         student.last_payment_reminder = None
         await session.commit()
-
-    if amount == 0:
-        text = f"✅ {student.full_name}: обнулено"
-    else:
-        text = (
-            f"✅ {student.full_name}: "
-            f"оплачено {amount}"
-        )
-    await callback.message.edit_text(
-        text, reply_markup=back_to_main()
+    paid = student.paid_lessons or 0
+    text = (
+        f"💰 {student.full_name}\n\n"
+        f"Сейчас оплачено: {paid}\n\n"
+        "Выбери новое количество:"
     )
+    kb = set_paid_amounts_keyboard(sid, paid)
+    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.answer(f"Оплачено: {amount}")
+
+@dp.callback_query(lambda c: c.data == "ignore")
+async def cb_ignore(callback: CallbackQuery):
     await callback.answer()
 
-
-@dp.callback_query(
-    lambda c: c.data == "menu:main"
-)
+@dp.callback_query(lambda c: c.data == "menu:main")
 async def cb_main(callback: CallbackQuery):
     uid = callback.from_user.id
     if is_teacher(uid):
         kb = main_menu_teacher()
     else:
         kb = main_menu_student()
-    await callback.message.edit_text(
-        "Главное меню:", reply_markup=kb
-    )
+    await callback.message.edit_text("Главное меню:", reply_markup=kb)
     await callback.answer()
 
-
-@dp.callback_query(
-    lambda c: c.data == "menu:help"
-)
+@dp.callback_query(lambda c: c.data == "menu:help")
 async def cb_help(callback: CallbackQuery):
     await callback.message.edit_text(
-        text_help(),
-        reply_markup=back_to_main(),
+        text_help(), reply_markup=back_to_main()
     )
     await callback.answer()
 
-
-@dp.callback_query(
-    lambda c: c.data == "menu:settings"
-)
+@dp.callback_query(lambda c: c.data == "menu:settings")
 async def cb_settings(callback: CallbackQuery):
     uid = callback.from_user.id
     async with async_session() as session:
-        q = select(Student).where(
-            Student.tg_id == uid
-        )
+        q = select(Student).where(Student.tg_id == uid)
         result = await session.execute(q)
         student = result.scalar_one_or_none()
-
     if not student:
         await callback.answer("Сначала /start")
         return
-
     hours = student.custom_hours_before or 2
     text = (
         f"⚙️ Напоминания\n\n"
         f"Сейчас {hours_text(hours)}.\n\n"
         "Выбери:"
     )
-    await callback.message.edit_text(
-        text, reply_markup=hours_keyboard()
-    )
+    await callback.message.edit_text(text, reply_markup=hours_keyboard())
     await callback.answer()
 
-
-@dp.callback_query(
-    lambda c: c.data.startswith("h:")
-)
+@dp.callback_query(lambda c: c.data.startswith("h:"))
 async def cb_hours(callback: CallbackQuery):
     hours = int(callback.data.split(":")[1])
     uid = callback.from_user.id
-
     async with async_session() as session:
-        q = select(Student).where(
-            Student.tg_id == uid
-        )
+        q = select(Student).where(Student.tg_id == uid)
         result = await session.execute(q)
         student = result.scalar_one_or_none()
         if student:
             student.custom_hours_before = hours
             await session.commit()
-
-    text = (
-        f"✅ Готово!\n\n"
-        f"Напомню {hours_text(hours)}."
-    )
-    await callback.message.edit_text(
-        text, reply_markup=back_to_main()
-    )
+    text = f"✅ Готово!\n\nНапомню {hours_text(hours)}."
+    await callback.message.edit_text(text, reply_markup=back_to_main())
     await callback.answer()
 
-
-@dp.callback_query(
-    lambda c: c.data == "menu:lessons"
-)
+@dp.callback_query(lambda c: c.data == "menu:lessons")
 async def cb_lessons(callback: CallbackQuery):
     uid = callback.from_user.id
     async with async_session() as session:
-        q = select(Student).where(
-            Student.tg_id == uid
-        )
+        q = select(Student).where(Student.tg_id == uid)
         result = await session.execute(q)
         student = result.scalar_one_or_none()
-
         if not student:
             await callback.answer("Сначала /start")
             return
-
         q2 = (
             select(Lesson)
             .where(Lesson.student_id == student.id)
@@ -452,264 +375,176 @@ async def cb_lessons(callback: CallbackQuery):
         )
         r2 = await session.execute(q2)
         lessons = r2.scalars().all()
-
     if not lessons:
         await callback.message.edit_text(
-            "📅 Пока нет занятий.",
-            reply_markup=back_to_main(),
+            "📅 Пока нет занятий.", reply_markup=back_to_main()
         )
         await callback.answer()
         return
-
     now = now_msk()
     lines = ["📅 Твои занятия:\n"]
     for les in lessons:
         dt = les.datetime_start
         mark = "✓" if dt < now else "•"
-        line = f"{mark} "
-        line += dt.strftime("%d.%m %H:%M")
-        line += f" — {les.title}"
-        lines.append(line)
-
+        s = dt.strftime("%d.%m %H:%M")
+        lines.append(f"{mark} {s} — {les.title}")
     await callback.message.edit_text(
-        "\n".join(lines),
-        reply_markup=back_to_main(),
+        "\n".join(lines), reply_markup=back_to_main()
     )
     await callback.answer()
 
-
-@dp.callback_query(
-    lambda c: c.data == "menu:add"
-)
+@dp.callback_query(lambda c: c.data == "menu:add")
 async def cb_add(callback: CallbackQuery):
     uid = callback.from_user.id
     if not is_teacher(uid):
         await callback.answer("Нет доступа")
         return
-
     async with async_session() as session:
-        q = select(Student).where(
-            Student.tg_id != TEACHER_ID
-        )
+        q = select(Student).where(Student.tg_id != TEACHER_ID)
         result = await session.execute(q)
         students = result.scalars().all()
-
     if not students:
         await callback.message.edit_text(
-            "Нет учеников.",
-            reply_markup=back_to_main(),
+            "Нет учеников.", reply_markup=back_to_main()
         )
         await callback.answer()
         return
-
     lines = ["👥 Выбери ученика:\n"]
     for i, s in enumerate(students, 1):
         un = s.username or "—"
         lines.append(f"{i}. {s.full_name} @{un}")
-    lines.append(
-        f"\nНапиши номер 1–{len(students)}"
-    )
-
+    lines.append(f"\nНапиши номер 1–{len(students)}")
     data = {"total": len(students)}
     for i, s in enumerate(students, 1):
         data[f"s_{i}"] = s.id
-
     await callback.message.edit_text(
-        "\n".join(lines),
-        reply_markup=back_to_main(),
+        "\n".join(lines), reply_markup=back_to_main()
     )
     await callback.answer()
-
     state = dp.fsm.get_context(
-        bot=bot,
-        chat_id=callback.message.chat.id,
-        user_id=uid,
+        bot=bot, chat_id=callback.message.chat.id, user_id=uid
     )
     await state.update_data(**data)
     await state.set_state(AddLesson.student)
 
-
-@dp.callback_query(
-    lambda c: c.data == "menu:list"
-)
+@dp.callback_query(lambda c: c.data == "menu:list")
 async def cb_list(callback: CallbackQuery):
     uid = callback.from_user.id
     if not is_teacher(uid):
         await callback.answer("Нет доступа")
         return
-
     async with async_session() as session:
-        q = select(Lesson).order_by(
-            Lesson.datetime_start
-        )
+        q = select(Lesson).order_by(Lesson.datetime_start)
         result = await session.execute(q)
         lessons = result.scalars().all()
-
         q2 = select(Student)
         r2 = await session.execute(q2)
         students = r2.scalars().all()
         s_map = {s.id: s.full_name for s in students}
-
     if not lessons:
         await callback.message.edit_text(
-            "📋 Занятий нет.",
-            reply_markup=back_to_main(),
+            "📋 Занятий нет.", reply_markup=back_to_main()
         )
         await callback.answer()
         return
-
     now = now_msk()
-    future = [
-        l for l in lessons if l.datetime_start >= now
-    ]
-    past = [
-        l for l in lessons if l.datetime_start < now
-    ]
-
+    future = [l for l in lessons if l.datetime_start >= now]
+    past = [l for l in lessons if l.datetime_start < now]
     lines = []
     if future:
         lines.append("📅 Предстоящие:\n")
         for les in future[:20]:
             n = s_map.get(les.student_id, "?")
-            dt = les.datetime_start
-            line = "• "
-            line += dt.strftime("%d.%m %H:%M")
-            line += f" — {n}"
-            lines.append(line)
-
+            s = les.datetime_start.strftime("%d.%m %H:%M")
+            lines.append(f"• {s} — {n}")
     if past:
         lines.append("\n✓ Прошедшие:\n")
         for les in past[-10:]:
             n = s_map.get(les.student_id, "?")
-            dt = les.datetime_start
-            line = "✓ "
-            line += dt.strftime("%d.%m %H:%M")
-            line += f" — {n}"
-            lines.append(line)
-
+            s = les.datetime_start.strftime("%d.%m %H:%M")
+            lines.append(f"✓ {s} — {n}")
     await callback.message.edit_text(
-        "\n".join(lines),
-        reply_markup=back_to_main(),
+        "\n".join(lines), reply_markup=back_to_main()
     )
     await callback.answer()
 
-
-@dp.callback_query(
-    lambda c: c.data == "menu:stats"
-)
+@dp.callback_query(lambda c: c.data == "menu:stats")
 async def cb_stats(callback: CallbackQuery):
     uid = callback.from_user.id
     if not is_teacher(uid):
         await callback.answer("Нет доступа")
         return
-
     async with async_session() as session:
         q = select(Student)
         result = await session.execute(q)
         students = result.scalars().all()
-
         q2 = select(Lesson)
         r2 = await session.execute(q2)
         lessons = r2.scalars().all()
-
     now = now_msk()
     lines = ["📊 Статистика:\n"]
     lines.append(f"Учеников: {len(students)}")
     lines.append(f"Занятий: {len(lessons)}")
-
-    done = [
-        l for l in lessons if l.datetime_start < now
-    ]
-    fut = [
-        l for l in lessons if l.datetime_start >= now
-    ]
+    done = [l for l in lessons if l.datetime_start < now]
+    fut = [l for l in lessons if l.datetime_start >= now]
     lines.append(f"Проведено: {len(done)}")
     lines.append(f"Предстоит: {len(fut)}")
-
     await callback.message.edit_text(
-        "\n".join(lines),
-        reply_markup=back_to_main(),
+        "\n".join(lines), reply_markup=back_to_main()
     )
     await callback.answer()
 
-
-@dp.callback_query(
-    lambda c: c.data == "menu:students"
-)
+@dp.callback_query(lambda c: c.data == "menu:students")
 async def cb_students(callback: CallbackQuery):
     uid = callback.from_user.id
     if not is_teacher(uid):
         await callback.answer("Нет доступа")
         return
-
     async with async_session() as session:
-        q = select(Student).where(
-            Student.tg_id != TEACHER_ID
-        )
+        q = select(Student).where(Student.tg_id != TEACHER_ID)
         result = await session.execute(q)
         students = result.scalars().all()
-
     if not students:
         await callback.message.edit_text(
-            "Учеников нет.",
-            reply_markup=back_to_main(),
+            "Учеников нет.", reply_markup=back_to_main()
         )
         await callback.answer()
         return
-
     lines = ["👥 Ученики:\n"]
     for i, s in enumerate(students, 1):
         un = s.username or "—"
         lines.append(f"{i}. {s.full_name} @{un}")
-
     await callback.message.edit_text(
-        "\n".join(lines),
-        reply_markup=back_to_main(),
+        "\n".join(lines), reply_markup=back_to_main()
     )
     await callback.answer()
 
-
-@dp.callback_query(
-    lambda c: c.data == "menu:find"
-)
-async def cb_find(
-    callback: CallbackQuery,
-    state: FSMContext,
-):
+@dp.callback_query(lambda c: c.data == "menu:find")
+async def cb_find(callback: CallbackQuery, state: FSMContext):
     uid = callback.from_user.id
     if not is_teacher(uid):
         await callback.answer("Нет доступа")
         return
-
     text = (
         "🔍 Поиск ученика\n\n"
         "Напиши @username или имя:\n\n"
         "@alina или Алина"
     )
-    await callback.message.edit_text(
-        text, reply_markup=back_to_main()
-    )
+    await callback.message.edit_text(text, reply_markup=back_to_main())
     await callback.answer()
     await state.set_state(FindStudent.query)
 
-
 @dp.message(FindStudent.query)
-async def find_query(
-    message: types.Message,
-    state: FSMContext,
-):
+async def find_query(message: types.Message, state: FSMContext):
     uid = message.from_user.id
     if not is_teacher(uid):
         return
-
     q_in = message.text.strip()
     low = q_in.lower().lstrip("@")
-
     async with async_session() as session:
         q = select(Student)
         r = await session.execute(q)
         all_s = r.scalars().all()
-
     found = []
     for s in all_s:
         if s.tg_id == TEACHER_ID:
@@ -718,15 +553,10 @@ async def find_query(
         un = (s.username or "").lower()
         if low in nm or low == un:
             found.append(s)
-
     if not found:
-        await message.answer(
-            "❌ Не найден.",
-            reply_markup=back_to_main(),
-        )
+        await message.answer("❌ Не найден.", reply_markup=back_to_main())
         await state.clear()
         return
-
     if len(found) > 1:
         lines = ["🔍 Найдено несколько:\n"]
         for i, s in enumerate(found, 1):
@@ -735,32 +565,20 @@ async def find_query(
         lines.append("\nУточни @username:")
         await message.answer("\n".join(lines))
         return
-
     s = found[0]
     await show_card(message, s)
     await state.clear()
 
-
 async def show_card(message, student):
     async with async_session() as session:
-        q = select(Lesson).where(
-            Lesson.student_id == student.id
-        )
+        q = select(Lesson).where(Lesson.student_id == student.id)
         r = await session.execute(q)
         lessons = r.scalars().all()
-
     now = now_msk()
-    done = len([
-        l for l in lessons
-        if l.datetime_start < now
-    ])
-    fut = len([
-        l for l in lessons
-        if l.datetime_start >= now
-    ])
+    done = len([l for l in lessons if l.datetime_start < now])
+    fut = len([l for l in lessons if l.datetime_start >= now])
     paid = student.paid_lessons or 0
     left = paid - done
-
     un = student.username or "—"
     text = (
         f"👤 {student.full_name}\n\n"
@@ -774,32 +592,19 @@ async def show_card(message, student):
     kb = card_keyboard(student.id)
     await message.answer(text, reply_markup=kb)
 
-
-@dp.callback_query(
-    lambda c: c.data.startswith("act:add:")
-)
-async def cb_card_add(
-    callback: CallbackQuery,
-    state: FSMContext,
-):
+@dp.callback_query(lambda c: c.data.startswith("act:add:"))
+async def cb_card_add(callback: CallbackQuery, state: FSMContext):
     uid = callback.from_user.id
     if not is_teacher(uid):
         await callback.answer("Нет доступа")
         return
-
     sid = int(callback.data.split(":")[2])
-
     async with async_session() as session:
         student = await session.get(Student, sid)
-
     if not student:
         await callback.answer("Не найден")
         return
-
-    await state.update_data(
-        sid=student.id,
-        sname=student.full_name,
-    )
+    await state.update_data(sid=student.id, sname=student.full_name)
     text = (
         f"Ученик: {student.full_name}\n\n"
         "Введи дату и время:\n"
@@ -810,133 +615,89 @@ async def cb_card_add(
     await callback.answer()
     await state.set_state(AddLesson.dt)
 
-
-@dp.callback_query(
-    lambda c: c.data.startswith("act:pay:")
-)
+@dp.callback_query(lambda c: c.data.startswith("act:pay:"))
 async def cb_card_pay(callback: CallbackQuery):
     uid = callback.from_user.id
     if not is_teacher(uid):
         await callback.answer("Нет доступа")
         return
-
     sid = int(callback.data.split(":")[2])
-
     async with async_session() as session:
         student = await session.get(Student, sid)
-
     if not student:
         await callback.answer("Не найден")
         return
-
     tg = student.tg_id
     text = text_pay_after_button()
     kb = paid_button_keyboard()
-
     try:
-        await bot.send_message(
-            tg, text, reply_markup=kb
-        )
+        await bot.send_message(tg, text, reply_markup=kb)
     except Exception as e:
-        await callback.message.answer(
-            f"Ошибка: {e}"
-        )
+        await callback.message.answer(f"Ошибка: {e}")
         return
-
     await callback.message.edit_text(
-        "✅ Отправлено.",
-        reply_markup=back_to_main(),
+        "✅ Отправлено.", reply_markup=back_to_main()
     )
     await callback.answer()
 
-
-@dp.callback_query(
-    lambda c: c.data == "menu:pay"
-)
+@dp.callback_query(lambda c: c.data == "menu:pay")
 async def cb_pay(callback: CallbackQuery):
     uid = callback.from_user.id
     if not is_teacher(uid):
         await callback.answer("Нет доступа")
         return
     await callback.message.edit_text(
-        "💰 Оплата и напоминания\n\n"
-        "Что отправить?",
+        "💰 Оплата и напоминания\n\nЧто отправить?",
         reply_markup=pay_menu(),
     )
     await callback.answer()
 
-
-@dp.callback_query(
-    lambda c: c.data in ("pay:after", "pay:end")
-)
-async def cb_pay_choose(
-    callback: CallbackQuery,
-    state: FSMContext,
-):
+@dp.callback_query(lambda c: c.data in ("pay:after", "pay:end"))
+async def cb_pay_choose(callback: CallbackQuery, state: FSMContext):
     uid = callback.from_user.id
     if not is_teacher(uid):
         await callback.answer("Нет доступа")
         return
-
     mode = callback.data.split(":")[1]
-
     async with async_session() as session:
-        q = select(Student).where(
-            Student.tg_id != TEACHER_ID
-        )
+        q = select(Student).where(Student.tg_id != TEACHER_ID)
         r = await session.execute(q)
         students = r.scalars().all()
-
     if not students:
         await callback.message.edit_text(
-            "Нет учеников.",
-            reply_markup=back_to_main("menu:pay"),
+            "Нет учеников.", reply_markup=back_to_main("menu:pay")
         )
         await callback.answer()
         return
-
     lines = ["👥 Кому:\n"]
     for i, s in enumerate(students, 1):
         un = s.username or "—"
         lines.append(f"{i}. {s.full_name} @{un}")
-    lines.append(
-        f"\nНомер 1–{len(students)} или @un"
-    )
-
+    lines.append(f"\nНомер 1–{len(students)} или @un")
     data = {"mode": mode, "total": len(students)}
     for i, s in enumerate(students, 1):
         data[f"st_{i}"] = s.tg_id
-
     await state.update_data(**data)
     await state.set_state(PayFlow.choosing_student)
-
     await callback.message.edit_text(
-        "\n".join(lines),
-        reply_markup=back_to_main("menu:pay"),
+        "\n".join(lines), reply_markup=back_to_main("menu:pay")
     )
     await callback.answer()
 
-
 @dp.message(PayFlow.choosing_student)
-async def pay_send(
-    message: types.Message,
-    state: FSMContext,
-):
+async def pay_send(message: types.Message, state: FSMContext):
     uid = message.from_user.id
     if not is_teacher(uid):
         return
-
     data = await state.get_data()
     total = data.get("total", 0)
     mode = data.get("mode")
     txt = message.text.strip()
     tg = None
-
     if txt.isdigit():
         num = int(txt)
         if 1 <= num <= total:
             tg = data.get(f"st_{num}")
-
     if tg is None:
         low = txt.lower().lstrip("@")
         async with async_session() as session:
@@ -951,53 +712,34 @@ async def pay_send(
             if low == un or low in nm:
                 tg = s.tg_id
                 break
-
     if tg is None:
         await message.answer("Не нашёл.")
         return
-
     if mode == "after":
         text = text_pay_after_button()
     else:
         text = text_pay_end_button()
-
     kb = paid_button_keyboard()
-
     try:
-        await bot.send_message(
-            tg, text, reply_markup=kb
-        )
+        await bot.send_message(tg, text, reply_markup=kb)
     except Exception as e:
         await message.answer(f"Ошибка: {e}")
         await state.clear()
         return
-
     await state.clear()
     await message.answer(
-        "✅ Отправлено.",
-        reply_markup=back_to_main("menu:pay"),
+        "✅ Отправлено.", reply_markup=back_to_main("menu:pay")
     )
 
-
-@dp.callback_query(
-    lambda c: c.data == "show:tariffs"
-)
-async def cb_show_tariffs(
-    callback: CallbackQuery,
-):
+@dp.callback_query(lambda c: c.data == "show:tariffs")
+async def cb_show_tariffs(callback: CallbackQuery):
     await callback.message.edit_text(
-        text_tariffs(),
-        reply_markup=tariffs_keyboard(),
+        text_tariffs(), reply_markup=tariffs_keyboard()
     )
     await callback.answer()
 
-
-@dp.callback_query(
-    lambda c: c.data.startswith("tar:")
-)
-async def cb_tariff_chosen(
-    callback: CallbackQuery,
-):
+@dp.callback_query(lambda c: c.data.startswith("tar:"))
+async def cb_tariff_chosen(callback: CallbackQuery):
     tar = callback.data.split(":")[1]
     tariffs = {
         "30_1": "30 мин, 1 раз — 2000 ₽",
@@ -1007,7 +749,6 @@ async def cb_tariff_chosen(
     }
     chosen = tariffs.get(tar, "?")
     u = callback.from_user
-
     text = (
         "🔔 Заявка на абонемент\n\n"
         f"Ученик: {u.full_name}\n"
@@ -1018,60 +759,37 @@ async def cb_tariff_chosen(
         await bot.send_message(TEACHER_ID, text)
     except Exception as e:
         logging.error(f"Ош: {e}")
-
     await callback.message.edit_text(
-        "✅ Заявка отправлена!\n\n"
-        "Я свяжусь с тобой.",
+        "✅ Заявка отправлена!\n\nЯ свяжусь с тобой."
     )
     await callback.answer()
 
-
-@dp.callback_query(
-    lambda c: c.data == "paid:click"
-)
-async def cb_paid_click(
-    callback: CallbackQuery,
-    state: FSMContext,
-):
+@dp.callback_query(lambda c: c.data == "paid:click")
+async def cb_paid_click(callback: CallbackQuery, state: FSMContext):
     text = (
         "📸 Пришли, пожалуйста, "
         "скриншот оплаты.\n\n"
         "Он будет отправлен преподавателю."
     )
     await callback.message.edit_text(
-        text,
-        reply_markup=back_from_paid_keyboard(),
+        text, reply_markup=back_from_paid_keyboard()
     )
     await callback.answer()
     await state.set_state(PaymentProof.waiting_photo)
 
-
-@dp.callback_query(
-    lambda c: c.data == "paid:back"
-)
-async def cb_paid_back(
-    callback: CallbackQuery,
-    state: FSMContext,
-):
+@dp.callback_query(lambda c: c.data == "paid:back")
+async def cb_paid_back(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
-        "Ок, отменено.",
-        reply_markup=back_to_main(),
+        "Ок, отменено.", reply_markup=back_to_main()
     )
     await callback.answer()
     await state.clear()
 
-
 @dp.message(PaymentProof.waiting_photo)
-async def receive_photo(
-    message: types.Message,
-    state: FSMContext,
-):
+async def receive_photo(message: types.Message, state: FSMContext):
     if not message.photo:
-        await message.answer(
-            "Пожалуйста, пришли именно фото."
-        )
+        await message.answer("Пожалуйста, пришли именно фото.")
         return
-
     user = message.from_user
     photo = message.photo[-1]
     caption = (
@@ -1081,73 +799,43 @@ async def receive_photo(
         f"ID: {user.id}"
     )
     try:
-        await bot.send_photo(
-            TEACHER_ID,
-            photo.file_id,
-            caption=caption,
-        )
+        await bot.send_photo(TEACHER_ID, photo.file_id, caption=caption)
     except Exception as e:
         logging.error(f"Ош: {e}")
         await message.answer("Ошибка отправки.")
         await state.clear()
         return
-
     await message.answer(
-        text_payment_received(),
-        reply_markup=back_to_main(),
+        text_payment_received(), reply_markup=back_to_main()
     )
     await state.clear()
 
-
-@dp.callback_query(
-    lambda c: c.data == "transfer:click"
-)
-async def cb_transfer_click(
-    callback: CallbackQuery,
-    state: FSMContext,
-):
+@dp.callback_query(lambda c: c.data == "transfer:click")
+async def cb_transfer_click(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
-        text_transfer_ask(),
-        reply_markup=transfer_cancel_keyboard(),
+        text_transfer_ask(), reply_markup=transfer_cancel_keyboard()
     )
     await callback.answer()
     await state.set_state(TransferFlow.reason)
 
-
-@dp.callback_query(
-    lambda c: c.data == "transfer:cancel"
-)
-async def cb_transfer_cancel(
-    callback: CallbackQuery,
-    state: FSMContext,
-):
-    await callback.message.edit_text(
-        text_transfer_cancel(),
-    )
+@dp.callback_query(lambda c: c.data == "transfer:cancel")
+async def cb_transfer_cancel(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text(text_transfer_cancel())
     await callback.answer()
     await state.clear()
 
-
 @dp.message(TransferFlow.reason)
-async def transfer_reason(
-    message: types.Message,
-    state: FSMContext,
-):
+async def transfer_reason(message: types.Message, state: FSMContext):
     user = message.from_user
     reason = message.text.strip()
-
     async with async_session() as session:
-        q = select(Student).where(
-            Student.tg_id == user.id
-        )
+        q = select(Student).where(Student.tg_id == user.id)
         r = await session.execute(q)
         student = r.scalar_one_or_none()
-
         if not student:
             await message.answer("Сначала /start")
             await state.clear()
             return
-
         now = now_msk()
         q2 = (
             select(Lesson)
@@ -1157,16 +845,11 @@ async def transfer_reason(
         )
         r2 = await session.execute(q2)
         lesson = r2.scalars().first()
-
     if lesson:
         dt = lesson.datetime_start
-        les_info = (
-            f"{dt.strftime('%d.%m.%Y %H:%M')} — "
-            f"{lesson.title}"
-        )
+        les_info = f"{dt.strftime('%d.%m.%Y %H:%M')} — {lesson.title}"
     else:
         les_info = "—"
-
     un = user.username or "—"
     text = (
         "🔄 Запрос на перенос\n\n"
@@ -1180,82 +863,49 @@ async def transfer_reason(
         await bot.send_message(TEACHER_ID, text)
     except Exception as e:
         logging.error(f"Ош: {e}")
-
-    await message.answer(
-        text_transfer_sent(),
-        reply_markup=back_to_main(),
-    )
+    await message.answer(text_transfer_sent(), reply_markup=back_to_main())
     await state.clear()
 
-
-@dp.callback_query(
-    lambda c: c.data == "menu:reschedule"
-)
-async def cb_reschedule(
-    callback: CallbackQuery,
-):
+@dp.callback_query(lambda c: c.data == "menu:reschedule")
+async def cb_reschedule(callback: CallbackQuery):
     uid = callback.from_user.id
     if not is_teacher(uid):
         await callback.answer("Нет доступа")
         return
-
     async with async_session() as session:
-        q = select(Lesson).order_by(
-            Lesson.datetime_start
-        )
+        q = select(Lesson).order_by(Lesson.datetime_start)
         r = await session.execute(q)
         lessons = r.scalars().all()
-
     now = now_msk()
-    future = [
-        l for l in lessons
-        if l.datetime_start >= now
-    ]
-
+    future = [l for l in lessons if l.datetime_start >= now]
     if not future:
         await callback.message.edit_text(
-            "Нет предстоящих занятий.",
-            reply_markup=back_to_main(),
+            "Нет предстоящих занятий.", reply_markup=back_to_main()
         )
         await callback.answer()
         return
-
     await callback.message.edit_text(
-        "🔄 Перенести занятие\n\n"
-        "Выбери:",
-        reply_markup=lessons_action_keyboard(
-            future, "resch"
-        ),
+        "🔄 Перенести занятие\n\nВыбери:",
+        reply_markup=lessons_action_keyboard(future, "resch"),
     )
     await callback.answer()
 
-
-@dp.callback_query(
-    lambda c: c.data.startswith("resch:")
-)
-async def cb_resch_choose(
-    callback: CallbackQuery,
-    state: FSMContext,
-):
+@dp.callback_query(lambda c: c.data.startswith("resch:"))
+async def cb_resch_choose(callback: CallbackQuery, state: FSMContext):
     uid = callback.from_user.id
     if not is_teacher(uid):
         await callback.answer("Нет доступа")
         return
-
     lid = int(callback.data.split(":")[1])
-
     async with async_session() as session:
         lesson = await session.get(Lesson, lid)
-
     if not lesson:
         await callback.answer("Не найдено")
         return
-
     await state.update_data(lid=lid)
     dt = lesson.datetime_start
     text = (
-        f"Текущее: "
-        f"{dt.strftime('%d.%m.%Y %H:%M')}\n\n"
+        f"Текущее: {dt.strftime('%d.%m.%Y %H:%M')}\n\n"
         "Введи новую дату и время:\n"
         "ДД.ММ.ГГГГ ЧЧ:ММ"
     )
@@ -1263,134 +913,103 @@ async def cb_resch_choose(
     await callback.answer()
     await state.set_state(RescheduleFlow.dt)
 
-
 @dp.message(RescheduleFlow.dt)
-async def resch_apply(
-    message: types.Message,
-    state: FSMContext,
-):
+async def resch_apply(message: types.Message, state: FSMContext):
     uid = message.from_user.id
     if not is_teacher(uid):
         return
-
     try:
         new_dt = datetime.strptime(
-            message.text.strip(),
-            "%d.%m.%Y %H:%M",
+            message.text.strip(), "%d.%m.%Y %H:%M"
         )
     except ValueError:
-        await message.answer(
-            "Формат: 15.10.2026 18:30"
-        )
+        await message.answer("Формат: 15.10.2026 18:30")
         return
-
     data = await state.get_data()
     lid = data.get("lid")
-
     async with async_session() as session:
+        q = select(Lesson).where(
+            Lesson.datetime_start == new_dt,
+            Lesson.id != lid,
+        )
+        r = await session.execute(q)
+        existing = r.scalars().first()
+        if existing:
+            st = await session.get(Student, existing.student_id)
+            name = st.full_name if st else "?"
+            s = new_dt.strftime('%d.%m.%Y %H:%M')
+            txt = (
+                f"⚠️ На это время уже есть "
+                f"занятие:\n\n{s} — {name}\n\n"
+                "Выбери другое время."
+            )
+            await message.answer(txt)
+            return
         lesson = await session.get(Lesson, lid)
         if not lesson:
             await message.answer("Не найдено.")
             await state.clear()
             return
-
         old_dt = lesson.datetime_start
         lesson.datetime_start = new_dt
         lesson.is_done = False
         await session.commit()
-
-        q = select(Student).where(
-            Student.id == lesson.student_id
-        )
+        q = select(Student).where(Student.id == lesson.student_id)
         r = await session.execute(q)
         student = r.scalar_one_or_none()
         title = lesson.title
-
     if student:
         text = (
             "🔄 Занятие перенесено!\n\n"
-            f"Было: "
-            f"{old_dt.strftime('%d.%m %H:%M')}\n"
-            f"Стало: "
-            f"{new_dt.strftime('%d.%m %H:%M')}\n"
+            f"Было: {old_dt.strftime('%d.%m %H:%M')}\n"
+            f"Стало: {new_dt.strftime('%d.%m %H:%M')}\n"
             f"Тема: {title}"
         )
         try:
-            await bot.send_message(
-                student.tg_id, text
-            )
+            await bot.send_message(student.tg_id, text)
         except Exception as e:
             logging.error(f"Ош: {e}")
-
     await message.answer(
-        "✅ Перенесено!",
-        reply_markup=main_menu_teacher(),
+        "✅ Перенесено!", reply_markup=main_menu_teacher()
     )
     await state.clear()
 
-
-@dp.callback_query(
-    lambda c: c.data == "menu:delete"
-)
-async def cb_delete(
-    callback: CallbackQuery,
-):
+@dp.callback_query(lambda c: c.data == "menu:delete")
+async def cb_delete(callback: CallbackQuery):
     uid = callback.from_user.id
     if not is_teacher(uid):
         await callback.answer("Нет доступа")
         return
-
     async with async_session() as session:
-        q = select(Lesson).order_by(
-            Lesson.datetime_start
-        )
+        q = select(Lesson).order_by(Lesson.datetime_start)
         r = await session.execute(q)
         lessons = r.scalars().all()
-
     now = now_msk()
-    future = [
-        l for l in lessons
-        if l.datetime_start >= now
-    ]
-
+    future = [l for l in lessons if l.datetime_start >= now]
     if not future:
         await callback.message.edit_text(
-            "Нет предстоящих занятий.",
-            reply_markup=back_to_main(),
+            "Нет предстоящих занятий.", reply_markup=back_to_main()
         )
         await callback.answer()
         return
-
     await callback.message.edit_text(
-        "🗑 Удалить занятие\n\n"
-        "Выбери:",
-        reply_markup=lessons_action_keyboard(
-            future, "del"
-        ),
+        "🗑 Удалить занятие\n\nВыбери:",
+        reply_markup=lessons_action_keyboard(future, "del"),
     )
     await callback.answer()
 
-
-@dp.callback_query(
-    lambda c: c.data.startswith("del:")
-)
-async def cb_del_choose(
-    callback: CallbackQuery,
-):
+@dp.callback_query(lambda c: c.data.startswith("del:"))
+async def cb_del_choose(callback: CallbackQuery):
     uid = callback.from_user.id
     if not is_teacher(uid):
         await callback.answer("Нет доступа")
         return
-
     lid = int(callback.data.split(":")[1])
-
     async with async_session() as session:
         lesson = await session.get(Lesson, lid)
-
     if not lesson:
         await callback.answer("Не найдено")
         return
-
     dt = lesson.datetime_start
     text = (
         f"Удалить занятие?\n\n"
@@ -1398,42 +1017,29 @@ async def cb_del_choose(
         f"{lesson.title}"
     )
     await callback.message.edit_text(
-        text,
-        reply_markup=confirm_delete_keyboard(lid),
+        text, reply_markup=confirm_delete_keyboard(lid)
     )
     await callback.answer()
 
-
-@dp.callback_query(
-    lambda c: c.data.startswith("confirm_del:")
-)
-async def cb_del_confirm(
-    callback: CallbackQuery,
-):
+@dp.callback_query(lambda c: c.data.startswith("confirm_del:"))
+async def cb_del_confirm(callback: CallbackQuery):
     uid = callback.from_user.id
     if not is_teacher(uid):
         await callback.answer("Нет доступа")
         return
-
     lid = int(callback.data.split(":")[1])
-
     async with async_session() as session:
         lesson = await session.get(Lesson, lid)
         if not lesson:
             await callback.answer("Не найдено")
             return
-
-        q = select(Student).where(
-            Student.id == lesson.student_id
-        )
+        q = select(Student).where(Student.id == lesson.student_id)
         r = await session.execute(q)
         student = r.scalar_one_or_none()
         title = lesson.title
         dt = lesson.datetime_start
-
         await session.delete(lesson)
         await session.commit()
-
     if student:
         text = (
             "❌ Занятие отменено\n\n"
@@ -1441,34 +1047,36 @@ async def cb_del_confirm(
             f"{title}"
         )
         try:
-            await bot.send_message(
-                student.tg_id, text
-            )
+            await bot.send_message(student.tg_id, text)
         except Exception as e:
             logging.error(f"Ош: {e}")
-
     await callback.message.edit_text(
-        "✅ Удалено.",
-        reply_markup=back_to_main(),
+        "✅ Удалено.", reply_markup=back_to_main()
     )
     await callback.answer()
 
+async def check_duplicate_lesson(dt):
+    async with async_session() as session:
+        q = select(Lesson).where(Lesson.datetime_start == dt)
+        r = await session.execute(q)
+        existing = r.scalars().first()
+        if not existing:
+            return None
+        st = await session.get(Student, existing.student_id)
+        name = st.full_name if st else "?"
+        s = dt.strftime('%d.%m.%Y %H:%M')
+        return f"{s} — {name}"
 
 @dp.message(AddLesson.student)
-async def add_student(
-    message: types.Message,
-    state: FSMContext,
-):
+async def add_student(message: types.Message, state: FSMContext):
     data = await state.get_data()
     total = data.get("total", 0)
     txt = message.text.strip()
     sid = None
-
     if txt.isdigit():
         num = int(txt)
         if 1 <= num <= total:
             sid = data.get(f"s_{num}")
-
     if sid is None:
         low = txt.lower().lstrip("@")
         async with async_session() as session:
@@ -1483,23 +1091,16 @@ async def add_student(
             if low == un or low in nm:
                 sid = s.id
                 break
-
     if sid is None:
         await message.answer("Не нашёл.")
         return
-
     async with async_session() as session:
         student = await session.get(Student, sid)
-
     if not student:
         await message.answer("Ученик не найден.")
         await state.clear()
         return
-
-    await state.update_data(
-        sid=student.id,
-        sname=student.full_name,
-    )
+    await state.update_data(sid=student.id, sname=student.full_name)
     text = (
         f"Ученик: {student.full_name}\n\n"
         "Введи дату и время:\n"
@@ -1509,40 +1110,34 @@ async def add_student(
     await message.answer(text)
     await state.set_state(AddLesson.dt)
 
-
 @dp.message(AddLesson.dt)
-async def add_dt(
-    message: types.Message,
-    state: FSMContext,
-):
+async def add_dt(message: types.Message, state: FSMContext):
     try:
         dt = datetime.strptime(
-            message.text.strip(),
-            "%d.%m.%Y %H:%M",
+            message.text.strip(), "%d.%m.%Y %H:%M"
         )
     except ValueError:
-        await message.answer(
-            "Формат: 15.10.2026 18:30"
-        )
+        await message.answer("Формат: 15.10.2026 18:30")
         return
-
+    dup = await check_duplicate_lesson(dt)
+    if dup:
+        txt = (
+            f"⚠️ На это время уже есть "
+            f"занятие:\n\n{dup}\n\n"
+            "Выбери другое время."
+        )
+        await message.answer(txt)
+        return
     await state.update_data(dt=dt)
-    await message.answer(
-        "Название (или «-» = Итальянский):"
-    )
+    await message.answer("Название (или «-» = Итальянский):")
     await state.set_state(AddLesson.title)
 
-
 @dp.message(AddLesson.title)
-async def add_title(
-    message: types.Message,
-    state: FSMContext,
-):
+async def add_title(message: types.Message, state: FSMContext):
     data = await state.get_data()
     title = message.text.strip()
     if title == "-":
         title = "Итальянский"
-
     async with async_session() as session:
         lesson = Lesson(
             student_id=data["sid"],
@@ -1551,24 +1146,256 @@ async def add_title(
         )
         session.add(lesson)
         await session.commit()
-
     dt = data["dt"]
     text = (
         "✅ Занятие добавлено!\n\n"
         f"Ученик: {data['sname']}\n"
-        f"Дата: "
-        f"{dt.strftime('%d.%m.%Y %H:%M')}\n"
+        f"Дата: {dt.strftime('%d.%m.%Y %H:%M')}\n"
         f"Название: {title}"
     )
+    await message.answer(text, reply_markup=main_menu_teacher())
+    await state.clear()
+
+@dp.callback_query(lambda c: c.data.startswith("stdel:ask:"))
+async def cb_stdel_ask(callback: CallbackQuery):
+    uid = callback.from_user.id
+    if not is_teacher(uid):
+        await callback.answer("Нет доступа")
+        return
+    sid = int(callback.data.split(":")[2])
+    async with async_session() as session:
+        student = await session.get(Student, sid)
+    if not student:
+        await callback.answer("Не найден")
+        return
+    text = (
+        f"Удалить ученика?\n\n"
+        f"{student.full_name}\n\n"
+        f"⚠️ Все данные удалятся."
+    )
+    kb = confirm_delete_student_keyboard(sid)
+    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data.startswith("stdel:"))
+async def cb_stdel_confirm(callback: CallbackQuery):
+    uid = callback.from_user.id
+    if not is_teacher(uid):
+        await callback.answer("Нет доступа")
+        return
+    sid = int(callback.data.split(":")[1])
+    async with async_session() as session:
+        student = await session.get(Student, sid)
+        if not student:
+            await callback.answer("Не найден")
+            return
+        name = student.full_name
+        tg = student.tg_id
+        await session.delete(student)
+        await session.commit()
+    await callback.message.edit_text(
+        f"✅ {name} удалён(а).", reply_markup=back_to_main()
+    )
+    await callback.answer()
+    try:
+        txt = (
+            "❌ Ваш профиль удалён.\n"
+            "Если ошибка — напишите мне."
+        )
+        await bot.send_message(tg, txt)
+    except Exception:
+        pass
+
+# ---------- ДОМАШКИ ----------
+@dp.callback_query(lambda c: c.data == "menu:hw")
+async def cb_hw_menu(callback: CallbackQuery):
+    if not is_teacher(callback.from_user.id):
+        return
+    b = [
+        [
+            InlineKeyboardButton(
+                text="➕ Создать ДЗ", callback_data="hw:create"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="⬅️ Назад", callback_data="menu:main"
+            )
+        ],
+    ]
+    kb = InlineKeyboardMarkup(inline_keyboard=b)
+    await callback.message.edit_text("📚 Домашние задания", reply_markup=kb)
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "hw:create")
+async def cb_hw_create(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("Введи название темы ДЗ:")
+    await state.set_state(AddHomework.title)
+    await callback.answer()
+
+@dp.message(AddHomework.title)
+async def hw_title(message: types.Message, state: FSMContext):
+    await state.update_data(title=message.text)
+    await message.answer("Теперь введи текст задания:")
+    await state.set_state(AddHomework.text)
+
+@dp.message(AddHomework.text)
+async def hw_text(message: types.Message, state: FSMContext):
+    await state.update_data(text=message.text)
     await message.answer(
-        text, reply_markup=main_menu_teacher()
+        "Прикрепи материал (фото/видео/файл/ссылку) или «-»:"
+    )
+    await state.set_state(AddHomework.media)
+
+@dp.message(AddHomework.media)
+async def hw_media(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    m_type, m_id = None, None
+    if message.photo:
+        m_type = "photo"
+        m_id = message.photo[-1].file_id
+    elif message.video:
+        m_type = "video"
+        m_id = message.video.file_id
+    elif message.document:
+        m_type = "document"
+        m_id = message.document.file_id
+    elif message.text and message.text.startswith("http"):
+        m_type = "link"
+        m_id = message.text.strip()
+    elif message.text == "-":
+        pass
+    else:
+        await message.answer("Пришли материал, ссылку или «-»:")
+        return
+    async with async_session() as session:
+        hw = Homework(
+            title=data["title"], text=data["text"],
+            media_type=m_type, media_id=m_id
+        )
+        session.add(hw)
+        await session.commit()
+    await message.answer(
+        "✅ ДЗ создано!", reply_markup=main_menu_teacher()
     )
     await state.clear()
 
+@dp.callback_query(lambda c: c.data == "hw:list")
+async def cb_hw_list(callback: CallbackQuery):
+    async with async_session() as session:
+        q = select(Homework).order_by(Homework.id.desc())
+        res = await session.execute(q)
+        hws = res.scalars().all()
+    if not hws:
+        await callback.message.edit_text(
+            "Пока нет ДЗ.", reply_markup=back_to_main()
+        )
+        await callback.answer()
+        return
+    b = []
+    for hw in hws:
+        cb = f"hw:view:{hw.id}"
+        b.append([
+            InlineKeyboardButton(text=hw.title, callback_data=cb)
+        ])
+    b.append([
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:main")
+    ])
+    kb = InlineKeyboardMarkup(inline_keyboard=b)
+    await callback.message.edit_text(
+        "📚 Выбери тему:", reply_markup=kb
+    )
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data.startswith("hw:view:"))
+async def cb_hw_view(callback: CallbackQuery):
+    hw_id = int(callback.data.split(":")[2])
+    async with async_session() as session:
+        hw = await session.get(Homework, hw_id)
+        q = select(Student).where(Student.tg_id == callback.from_user.id)
+        r = await session.execute(q)
+        st = r.scalar_one_or_none()
+        done = None
+        if st:
+            q2 = select(HomeworkDone).where(
+                HomeworkDone.homework_id == hw_id,
+                HomeworkDone.student_id == st.id
+            )
+            r2 = await session.execute(q2)
+            done = r2.scalar_one_or_none()
+    if not hw:
+        await callback.answer("Не найдено")
+        return
+    text = f"📚 {hw.title}\n\n{hw.text}"
+    b = []
+    if not done:
+        cb = f"hw:done:{hw.id}"
+        b.append([
+            InlineKeyboardButton(text="✅ Я выполнил(а)", callback_data=cb)
+        ])
+    else:
+        text += "\n\n✅ Вы уже отметили это задание."
+    b.append([
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="hw:list")
+    ])
+    kb = InlineKeyboardMarkup(inline_keyboard=b)
+    try:
+        if hw.media_type == "photo":
+            await callback.message.answer_photo(
+                hw.media_id, caption=text, reply_markup=kb
+            )
+        elif hw.media_type == "video":
+            await callback.message.answer_video(
+                hw.media_id, caption=text, reply_markup=kb
+            )
+        elif hw.media_type == "document":
+            await callback.message.answer_document(
+                hw.media_id, caption=text, reply_markup=kb
+            )
+        elif hw.media_type == "link":
+            text += f"\n\n🎥 Материал: {hw.media_id}"
+            await callback.message.edit_text(text, reply_markup=kb)
+        else:
+            await callback.message.edit_text(text, reply_markup=kb)
+    except Exception as e:
+        logging.error(f"Ошибка: {e}")
+        await callback.message.edit_text(text, reply_markup=kb)
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data.startswith("hw:done:"))
+async def cb_hw_done(callback: CallbackQuery):
+    hw_id = int(callback.data.split(":")[2])
+    uid = callback.from_user.id
+    async with async_session() as session:
+        q = select(Student).where(Student.tg_id == uid)
+        r = await session.execute(q)
+        st = r.scalar_one_or_none()
+        hw = await session.get(Homework, hw_id)
+        if st and hw:
+            q2 = select(HomeworkDone).where(
+                HomeworkDone.homework_id == hw_id,
+                HomeworkDone.student_id == st.id
+            )
+            r2 = await session.execute(q2)
+            if not r2.scalar_one_or_none():
+                done = HomeworkDone(
+                    homework_id=hw_id, student_id=st.id
+                )
+                session.add(done)
+                await session.commit()
+                txt = (
+                    f"📚 {st.full_name} "
+                    f"выполнил(а) ДЗ: {hw.title}"
+                )
+                await bot.send_message(TEACHER_ID, txt)
+    await callback.message.edit_text(
+        "✅ Отлично! Я передал преподавателю.",
+        reply_markup=back_to_main("hw:list")
+    )
+    await callback.answer()
 
 async def health(request):
     return web.Response(text="OK")
-
 
 async def on_startup(bot: Bot) -> None:
     await init_db()
@@ -1581,26 +1408,17 @@ async def on_startup(bot: Bot) -> None:
     logging.info("Webhook ок")
     start_scheduler(bot)
 
-
 app = web.Application()
-
 handler = SimpleRequestHandler(
     dispatcher=dp,
     bot=bot,
     secret_token=WEBHOOK_SECRET,
 )
 handler.register(app, path=WEBHOOK_PATH)
-
 app.router.add_get("/health", health)
-
 setup_application(app, dp, bot=bot)
 dp.startup.register(on_startup)
 
-
 if __name__ == "__main__":
     print("Сервер запущен")
-    web.run_app(
-        app,
-        host=WEB_SERVER_HOST,
-        port=WEB_SERVER_PORT,
-    )
+    web.run_app(app, host=WEB_SERVER_HOST, port=WEB_SERVER_PORT)
