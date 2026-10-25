@@ -3,10 +3,8 @@ from aiogram.types import (
     InlineKeyboardButton,
 )
 
-
 TEACHER_LINK = "https://t.me/alinaaait"
 
-# Анимированные ID
 E_LESSONS = "5343968081150486424"
 E_SETTINGS = "5343705388065763490"
 E_CONTACT = "5253967574038752898"
@@ -18,7 +16,6 @@ E_STATS = "5343846413316925467"
 E_SETPAID = "5343928112184831466"
 E_FIND = "5343803218830829094"
 E_STUDENTS = "5361658604766110429"
-
 
 def main_menu_student():
     b = [
@@ -32,6 +29,12 @@ def main_menu_student():
                 text="Напоминания",
                 callback_data="menu:settings",
                 icon_custom_emoji_id=E_SETTINGS,
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="📚 Домашки",
+                callback_data="hw:list",
             ),
         ],
         [
@@ -51,12 +54,11 @@ def main_menu_student():
         inline_keyboard=b
     )
 
-
 def main_menu_teacher():
     b = [
         [
             InlineKeyboardButton(
-                text="➕ Добавить занятие",
+                text="➕ Занятие",
                 callback_data="menu:add",
             ),
         ],
@@ -97,6 +99,12 @@ def main_menu_teacher():
         ],
         [
             InlineKeyboardButton(
+                text="📚 Домашки",
+                callback_data="menu:hw",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
                 text="Найти",
                 callback_data="menu:find",
                 icon_custom_emoji_id=E_FIND,
@@ -112,7 +120,6 @@ def main_menu_teacher():
         inline_keyboard=b
     )
 
-
 def back_to_main(cb: str = "menu:main"):
     b = [[
         InlineKeyboardButton(
@@ -124,33 +131,27 @@ def back_to_main(cb: str = "menu:main"):
         inline_keyboard=b
     )
 
-
 def hours_keyboard():
     b = [
         [
             InlineKeyboardButton(
-                text="За 1 час",
-                callback_data="h:1",
+                text="1 час", callback_data="h:1"
             ),
             InlineKeyboardButton(
-                text="За 3 часа",
-                callback_data="h:3",
+                text="3 часа", callback_data="h:3"
             ),
         ],
         [
             InlineKeyboardButton(
-                text="За 1 день",
-                callback_data="h:24",
+                text="1 день", callback_data="h:24"
             ),
             InlineKeyboardButton(
-                text="За 2 дня",
-                callback_data="h:48",
+                text="2 дня", callback_data="h:48"
             ),
         ],
         [
             InlineKeyboardButton(
-                text="За неделю",
-                callback_data="h:168",
+                text="Неделя", callback_data="h:168"
             ),
         ],
         [
@@ -164,18 +165,17 @@ def hours_keyboard():
         inline_keyboard=b
     )
 
-
 def pay_menu():
     b = [
         [
             InlineKeyboardButton(
-                text="💳 Оплата после урока",
+                text="💳 После урока",
                 callback_data="pay:after",
             ),
         ],
         [
             InlineKeyboardButton(
-                text="⏰ Абонемент кончился",
+                text="⏰ Абонемент",
                 callback_data="pay:end",
             ),
         ],
@@ -190,30 +190,29 @@ def pay_menu():
         inline_keyboard=b
     )
 
-
 def tariffs_keyboard():
     b = [
         [
             InlineKeyboardButton(
-                text="30 мин, 1 раз — 2000₽/мес",
+                text="30м, 1р — 2000₽",
                 callback_data="tar:30_1",
             ),
         ],
         [
             InlineKeyboardButton(
-                text="30 мин, 2 раза — 4000₽/мес",
+                text="30м, 2р — 4000₽",
                 callback_data="tar:30_2",
             ),
         ],
         [
             InlineKeyboardButton(
-                text="60 мин, 1 раз — 4000₽/мес",
+                text="60м, 1р — 4000₽",
                 callback_data="tar:60_1",
             ),
         ],
         [
             InlineKeyboardButton(
-                text="60 мин, 2 раза — 9000₽/мес",
+                text="60м, 2р — 9000₽",
                 callback_data="tar:60_2",
             ),
         ],
@@ -222,17 +221,25 @@ def tariffs_keyboard():
         inline_keyboard=b
     )
 
-
 def card_keyboard(student_id: int):
+    add_cb = f"act:add:{student_id}"
+    pay_cb = f"act:pay:{student_id}"
+    del_cb = f"stdel:ask:{student_id}"
     b = [
         [
             InlineKeyboardButton(
                 text="➕ Занятие",
-                callback_data=f"act:add:{student_id}",
+                callback_data=add_cb,
             ),
             InlineKeyboardButton(
                 text="💰 Оплата",
-                callback_data=f"act:pay:{student_id}",
+                callback_data=pay_cb,
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="🗑 Удалить",
+                callback_data=del_cb,
             ),
         ],
         [
@@ -246,17 +253,17 @@ def card_keyboard(student_id: int):
         inline_keyboard=b
     )
 
-
 def set_paid_students_keyboard(students):
     b = []
     for s in students:
         name = s.full_name
         if len(name) > 28:
             name = name[:28] + "..."
+        cb = f"sp:{s.id}"
         b.append([
             InlineKeyboardButton(
                 text=name,
-                callback_data=f"sp:{s.id}",
+                callback_data=cb,
             )
         ])
     b.append([
@@ -269,33 +276,42 @@ def set_paid_students_keyboard(students):
         inline_keyboard=b
     )
 
-
-def set_paid_amounts_keyboard(sid: int):
+def set_paid_amounts_keyboard(sid: int, current: int = 0):
+    m_cb = f"spa:{sid}:{current - 1}"
+    p_cb = f"spa:{sid}:{current + 1}"
+    z_cb = f"spa:{sid}:0"
     b = [
         [
             InlineKeyboardButton(
-                text="4 занятия",
-                callback_data=f"spa:{sid}:4",
+                text="4 зан.", callback_data=f"spa:{sid}:4"
             ),
             InlineKeyboardButton(
-                text="8 занятий",
-                callback_data=f"spa:{sid}:8",
+                text="8 зан.", callback_data=f"spa:{sid}:8"
             ),
         ],
         [
             InlineKeyboardButton(
-                text="12 занятий",
-                callback_data=f"spa:{sid}:12",
+                text="12 зан.", callback_data=f"spa:{sid}:12"
             ),
             InlineKeyboardButton(
-                text="16 занятий",
-                callback_data=f"spa:{sid}:16",
+                text="16 зан.", callback_data=f"spa:{sid}:16"
             ),
         ],
         [
             InlineKeyboardButton(
-                text="❌ Обнулить",
-                callback_data=f"spa:{sid}:0",
+                text="➖ -1", callback_data=m_cb
+            ),
+            InlineKeyboardButton(
+                text=f"Сейчас: {current}",
+                callback_data="ignore",
+            ),
+            InlineKeyboardButton(
+                text="➕ +1", callback_data=p_cb
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="❌ Обнулить", callback_data=z_cb
             ),
         ],
         [
@@ -309,12 +325,26 @@ def set_paid_amounts_keyboard(sid: int):
         inline_keyboard=b
     )
 
+def confirm_delete_student_keyboard(sid: int):
+    y_cb = f"stdel:{sid}"
+    b = [[
+        InlineKeyboardButton(
+            text="🗑 Да", callback_data=y_cb
+        ),
+        InlineKeyboardButton(
+            text="❌ Нет",
+            callback_data="menu:main",
+        ),
+    ]]
+    return InlineKeyboardMarkup(
+        inline_keyboard=b
+    )
 
 def paid_button_keyboard():
     b = [
         [
             InlineKeyboardButton(
-                text="📋 Посмотреть абонементы",
+                text="📋 Абонементы",
                 callback_data="show:tariffs",
             ),
         ],
@@ -329,7 +359,6 @@ def paid_button_keyboard():
         inline_keyboard=b
     )
 
-
 def back_from_paid_keyboard():
     b = [[
         InlineKeyboardButton(
@@ -340,7 +369,6 @@ def back_from_paid_keyboard():
     return InlineKeyboardMarkup(
         inline_keyboard=b
     )
-
 
 def transfer_keyboard():
     b = [[
@@ -354,7 +382,6 @@ def transfer_keyboard():
         inline_keyboard=b
     )
 
-
 def transfer_cancel_keyboard():
     b = [[
         InlineKeyboardButton(
@@ -366,17 +393,16 @@ def transfer_cancel_keyboard():
         inline_keyboard=b
     )
 
-
 def lessons_action_keyboard(lessons, action):
     b = []
     for les in lessons[:15]:
         dt = les.datetime_start
-        text = dt.strftime("%d.%m %H:%M")
-        text += f" — {les.title}"
+        txt = dt.strftime("%d.%m %H:%M")
+        txt += f" — {les.title}"
+        cb = f"{action}:{les.id}"
         b.append([
             InlineKeyboardButton(
-                text=text,
-                callback_data=f"{action}:{les.id}",
+                text=txt, callback_data=cb
             )
         ])
     b.append([
@@ -389,13 +415,13 @@ def lessons_action_keyboard(lessons, action):
         inline_keyboard=b
     )
 
-
 def confirm_delete_keyboard(lid: int):
+    y_cb = f"confirm_del:{lid}"
     b = [
         [
             InlineKeyboardButton(
                 text="Удалить",
-                callback_data=f"confirm_del:{lid}",
+                callback_data=y_cb,
                 icon_custom_emoji_id=E_DELETE,
             ),
             InlineKeyboardButton(
