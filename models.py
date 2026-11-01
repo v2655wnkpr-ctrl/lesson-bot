@@ -28,6 +28,9 @@ class Student(Base):
         String(100), nullable=True
     )
 
+    # НОВОЕ ПОЛЕ ДЛЯ ЧАСОВОГО ПОЯСА
+    timezone_offset: Mapped[int] = mapped_column(Integer, default=0)
+
     custom_hours_before: Mapped[int] = mapped_column(
         Integer, default=2
     )
@@ -65,4 +68,14 @@ class Lesson(Base):
 
     student: Mapped["Student"] = relationship(
         back_populates="lessons"
-    ) 
+    )
+
+
+# НОВАЯ ТАБЛИЦА ДЛЯ СЛОТОВ (КАЛЕНДАРЬ)
+class LessonSlot(Base):
+    __tablename__ = "lesson_slots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    teacher_id: Mapped[int] = mapped_column(BigInteger)
+    datetime_start: Mapped[datetime] = mapped_column(DateTime)
+    is_booked: Mapped[bool] = mapped_column(Boolean, default=False)
