@@ -514,7 +514,7 @@ async def cb_tariff_chosen(callback: CallbackQuery):
 @dp.callback_query(lambda c: c.data == "pay:single:req")
 async def cb_pay_single_req(callback: CallbackQuery):
     await callback.answer()
-    text = f"<b>Оплата разового занятия</b>\n\nПожалуйста, переведите сумму за урок.\n\n<b>Реквизиты:</b>\nЯндекс Банк: <code>+7 927 217-38-06</code>\n\nОтправьте скриншот."
+    text = f"<b>Оплата разового занятия</b>\n\nПожалуйста, переведите сумму за урок.\n\n<b>Реквизиты:</b>\nOzon Банк: <code>+7 938 550-19-00</code>\n\nОтправьте скриншот."
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📸 Отправить скриншот", callback_data="paid:send_screenshot")], [InlineKeyboardButton(text="⬅️ Назад", callback_data="pay:back:single")]])
     await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
 
