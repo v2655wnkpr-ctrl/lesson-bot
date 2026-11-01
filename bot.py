@@ -479,7 +479,7 @@ async def pay_send(message: types.Message, state: FSMContext):
 async def cb_pay_show_tariffs(callback: CallbackQuery):
     await callback.answer()
     context = callback.data.split(":")[2] if len(callback.data.split(":")) > 2 else "single"
-    text = "📚 <b>Наши тарифы:</b>\n\n• 30 мин, 1 раз — 2000 ₽\n• 30 мин, 2 раза — 4000 ₽\n• 60 мин, 1 раз — 4000 ₽\n• 60 мин, 2 раза — 9000 ₽\n\nВыберите 👇"
+    text = "📚 <b>Наши тарифы:</b>\n\n• 30 мин, 1 раз в неделю  — 2000 ₽/мес\n• 30 мин, 2 раза в неделю— 4000 ₽/мес\n• 60 мин, 1 раз в неделю — 4000 ₽/мес\n• 60 мин, 2 раза в неделю— 9000 ₽/мес\n\nВыберите 👇"
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="30м, 1р — 2000₽", callback_data=f"tar:30_1:{context}")],
         [InlineKeyboardButton(text="30м, 2р — 4000₽", callback_data=f"tar:30_2:{context}")],
