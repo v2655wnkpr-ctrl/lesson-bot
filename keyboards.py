@@ -94,3 +94,9 @@ def transfer_cancel_keyboard(): return InlineKeyboardMarkup(inline_keyboard=[[In
 def lessons_action_keyboard(lessons, action): return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{l.datetime_start.strftime('%d.%m %H:%M')} — {l.title}", callback_data=f"{action}:{l.id}")] for l in lessons[:15]] + [[InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:main")]])
 def confirm_delete_keyboard(lid): return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Удалить", callback_data=f"confirm_del:{lid}", icon_custom_emoji_id=E_DELETE), InlineKeyboardButton(text="❌ Отмена", callback_data="menu:main")]])
 def hours_keyboard(): return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="1 час", callback_data="h:1"), InlineKeyboardButton(text="3 часа", callback_data="h:3")], [InlineKeyboardButton(text="1 день", callback_data="h:24"), InlineKeyboardButton(text="2 дня", callback_data="h:48")], [InlineKeyboardButton(text="Неделя", callback_data="h:168")], [InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:main")]])
+def student_transfer_menu():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Предложить время из слотов", callback_data="transfer:ask_slot")],
+        [InlineKeyboardButton(text="Написать причину", callback_data="transfer:click")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:main")]
+    ])
