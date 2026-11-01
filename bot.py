@@ -507,7 +507,7 @@ async def cb_tariff_chosen(callback: CallbackQuery):
     parts = callback.data.split(":")
     context = parts[2] if len(parts) > 2 else "single"
     price = {"30_1": "2000 ₽", "30_2": "4000 ₽", "60_1": "4000 ₽", "60_2": "9000 ₽"}.get(parts[1], "Уточняйте")
-    text = f"Вы выбрали: <b>{price}</b>\n\n<b>Реквизиты:</b>\nЯндекс Банк: <code>+7 927 217-38-06</code>\n\nОтправьте скриншот."
+    text = f"Вы выбрали: <b>{price}</b>\n\n<b>Реквизиты:</b>\nOzon Банк: <code>+7 938 550-19-00</code>\n\nОтправьте скриншот."
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📸 Отправить скриншот", callback_data="paid:send_screenshot")], [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"pay:show_tariffs:{context}")]])
     await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
 
