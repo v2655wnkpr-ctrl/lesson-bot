@@ -51,6 +51,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
     user, uid = message.from_user, message.from_user.id
     is_new = False
+    
     async with async_session() as session:
         student = (await session.execute(select(Student).where(Student.tg_id == uid))).scalar_one_or_none()
         if not student:
@@ -60,16 +61,17 @@ async def cmd_start(message: types.Message, state: FSMContext):
             if uid != TEACHER_ID:
                 try: await bot.send_message(TEACHER_ID, f"🆕 Новый ученик!\n\n{user.full_name}\n@{user.username or '—'}")
                 except Exception: pass
+
     if is_teacher(uid):
         await message.answer("👋 Привет, преподаватель!", reply_markup=main_menu_teacher())
+    
     elif is_new:
         await message.answer(text_welcome(), reply_markup=main_menu_student())
         await message.answer("Выбери свой часовой пояс:", reply_markup=timezone_offset_keyboard())
         await state.set_state(SetTimezone.choosing_tz)
+    
     else:
-        await message.answer(text_welcome(), reply_markup=main_menu_student())
-
-@dp.callback_query(lambda c: c.data == "menu:timezone")
+        await message.answer("Главное меню:", reply_markup=main_menu_student())
 async def cb_menu_timezone(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await callback.message.edit_text("Выбери свой часовой пояс:", reply_markup=timezone_offset_keyboard())
@@ -317,7 +319,11 @@ async def cb_list(callback: CallbackQuery):
         if grp:
             lines.append(t)
             for les in grp: lines.append(f"• {les.datetime_start.strftime('%d.%m %H:%M')} — {s_map.get(les.student_id, '?')}")
-    await callback.message.edit_text("\n".join(lines), reply_markup=back_to_main())
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="🔄 Перенести занятие", callback_data="transfer:click")],
+    [InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:main")]
+])
+await callback.message.edit_text("\n".join(lines), reply_markup=kb)
 
 @dp.callback_query(lambda c: c.data == "menu:stats")
 async def cb_stats(callback: CallbackQuery):
@@ -422,20 +428,70 @@ async def resch_apply(message: types.Message, state: FSMContext):
                 except Exception: pass
     await message.answer("✅ Перенесено!", reply_markup=main_menu_teacher()); await state.clear()
 
-@dp.callback_query(lambda c: c.data == "transfer:click")
-async def cb_transfer_click(callback: CallbackQuery, state: FSMContext):
+# --- ПЕРЕНОСЫ С ВЫБОРОМ СЛОТОВ ---
+@dp.callback_query(lambda c: c.data == "transfer:ask_slot")
+async def cb_transfer_ask_slot(callback: CallbackQuery):
     await callback.answer()
-    await callback.message.edit_text(text_transfer_ask(), reply_markup=transfer_cancel_keyboard()); await state.set_state(TransferFlow.reason)
+    async with async_session() as session:
+        slots = (await session.execute(select(LessonSlot).where(LessonSlot.is_booked == False).order_by(LessonSlot.datetime_start))).scalars().all()
+    if not slots: return await callback.message.edit_text("Свободных слотов нет. Напиши преподавателю.", reply_markup=back_to_main())
+    b = [[InlineKeyboardButton(text=s.datetime_start.strftime("%d.%m %H:%M"), callback_data=f"transfer:pick:{s.id}")] for s in slots[:10]]
+    b.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:lessons")])
+    await callback.message.edit_text("Выбери свободное время:", reply_markup=InlineKeyboardMarkup(inline_keyboard=b))
 
-@dp.callback_query(lambda c: c.data == "transfer:cancel")
-async def cb_transfer_cancel(callback: CallbackQuery, state: FSMContext):
-    await callback.answer(); await callback.message.edit_text(text_transfer_cancel(), reply_markup=back_to_main()); await state.clear()
+@dp.callback_query(lambda c: c.data.startswith("transfer:pick:"))
+async def cb_transfer_pick(callback: CallbackQuery):
+    await callback.answer()
+    slot_id = int(callback.data.split(":")[2])
+    async with async_session() as session:
+        slot = await session.get(LessonSlot, slot_id)
+        student = (await session.execute(select(Student).where(Student.tg_id == callback.from_user.id))).scalar_one_or_none()
+        if not student or not slot: return
+        
+        # Ищем текущее занятие ученика
+        lesson = (await session.execute(select(Lesson).where(Lesson.student_id == student.id, Lesson.datetime_start >= now_msk()).order_by(Lesson.datetime_start))).scalars().first()
+        if not lesson: return await callback.message.edit_text("У тебя нет предстоящих занятий для переноса.", reply_markup=back_to_main())
+        
+        # Отправляем преподу запрос с кнопками
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"transfer:approve:{lesson.id}:{slot.id}"), 
+            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"transfer:decline:{slot.id}:{student.tg_id}")
+        ]])
+        await bot.send_message(TEACHER_ID, f"🔄 Запрос на перенос\nУченик: {student.full_name}\nТекущее: {lesson.datetime_start.strftime('%d.%m %H:%M')}\nХочет: {slot.datetime_start.strftime('%d.%m %H:%M')}", reply_markup=kb)
+        
+        # Временно бронируем слот
+        slot.is_booked = True
+        await session.commit()
+    await callback.message.edit_text("✅ Запрос отправлен преподавателю! Жди подтверждения.", reply_markup=back_to_main())
 
-@dp.message(TransferFlow.reason)
-async def transfer_reason(message: types.Message, state: FSMContext):
-    try: await bot.send_message(TEACHER_ID, f"🔄 Запрос на перенос\nУченик: {message.from_user.full_name}\nПричина: {message.text.strip()}")
-    except Exception: pass
-    await message.answer(text_transfer_sent(), reply_markup=back_to_main()); await state.clear()
+@dp.callback_query(lambda c: c.data.startswith("transfer:approve:"))
+async def cb_transfer_approve(callback: CallbackQuery):
+    await callback.answer("Подтверждено")
+    if not is_teacher(callback.from_user.id): return
+    _, _, lid, sid = callback.data.split(":")
+    async with async_session() as session:
+        lesson, slot = await session.get(Lesson, int(lid)), await session.get(LessonSlot, int(sid))
+        if lesson and slot:
+            lesson.datetime_start = slot.datetime_start
+            await session.delete(slot)
+            await session.commit()
+            await callback.message.edit_text("✅ Перенесено.")
+            student = (await session.execute(select(Student).where(Student.id == lesson.student_id))).scalar_one_or_none()
+            if student: await bot.send_message(student.tg_id, f"✅ Преподаватель подтвердил перенос!\nНовое время: {lesson.datetime_start.strftime('%d.%m %H:%M')}")
+
+@dp.callback_query(lambda c: c.data.startswith("transfer:decline:"))
+async def cb_transfer_decline(callback: CallbackQuery):
+    await callback.answer("Отклонено")
+    if not is_teacher(callback.from_user.id): return
+    parts = callback.data.split(":")
+    slot_id = int(parts[2]); student_tg_id = int(parts[3]) if len(parts) > 3 else None
+    async with async_session() as session:
+        slot = await session.get(LessonSlot, slot_id)
+        if slot: slot.is_booked = False; await session.commit()
+    await callback.message.edit_text("❌ Вы отклонили перенос.")
+    if student_tg_id:
+        try: await bot.send_message(student_tg_id, "❌ Преподаватель не может согласовать это время. Скоро свяжусь с вами.")
+        except Exception: pass
 
 # --- ОПЛАТА ---
 @dp.callback_query(lambda c: c.data == "menu:pay")
