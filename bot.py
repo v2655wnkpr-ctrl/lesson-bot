@@ -72,10 +72,9 @@ async def cmd_start(message: types.Message, state: FSMContext):
     
     else:
         await message.answer("Главное меню:", reply_markup=main_menu_student())
+
+@dp.callback_query(lambda c: c.data == "menu:timezone")
 async def cb_menu_timezone(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    await callback.message.edit_text("Выбери свой часовой пояс:", reply_markup=timezone_offset_keyboard())
-    await state.set_state(SetTimezone.choosing_tz)
 
 @dp.callback_query(lambda c: c.data.startswith("tz:"), SetTimezone.choosing_tz)
 async def cb_set_tz(callback: CallbackQuery, state: FSMContext):
