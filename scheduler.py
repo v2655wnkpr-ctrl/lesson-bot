@@ -38,7 +38,7 @@ async def check_lessons(bot):
             
             # Напоминание за N часов (проверяем с точностью до минуты)
             if int(diff_minutes) == int(remind_hours * 60):
-                text = f"🔔 Напоминание: у тебя занятие через {remind_hours} ч.\n\n📅 {local_lesson_time.strftime('%d.%m %H:%M')}\n📚 {lesson.title}"
+                text = f"🔔 Напоминание: у вас занятие через {remind_hours} ч.\n\n📅 {local_lesson_time.strftime('%d.%m %H:%M')}\n📚 {lesson.title}"
                 try:
                     await bot.send_message(st.tg_id, text)
                 except Exception:
