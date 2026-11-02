@@ -354,8 +354,17 @@ async def add_title(message: types.Message, state: FSMContext):
     data = await state.get_data()
     title = message.text.strip() if message.text.strip() != "-" else "Итальянский"
     async with async_session() as session:
-        session.add(Lesson(student_id=data["sid"], datetime_start=data["dt"], title=title)); await session.commit()
-    await message.answer(f"✅ Добавлено!\n{data['sname']}\n{data['dt'].strftime('%d.%m.%Y %H:%M')}", reply_markup=main_menu_teacher()); await state.clear()
+        session.add(Lesson(student_id=data["sid"], datetime_start=data["dt"], title=title))
+        await session.commit()
+        
+        # Уведомляем препода о новом занятии
+        try: 
+            await bot.send_message(TEACHER_ID, f"🆕 Добавлено занятие!\nУченик: {data['sname']}\nДата: {data['dt'].strftime('%d.%m.%Y %H:%M')}")
+        except Exception: 
+            pass
+            
+    await message.answer(f"✅ Добавлено!\n{data['sname']}\n{data['dt'].strftime('%d.%m.%Y %H:%M')}", reply_markup=main_menu_teacher())
+    await state.clear()
 
 @dp.callback_query(lambda c: c.data == "menu:list")
 async def cb_list(callback: CallbackQuery):
