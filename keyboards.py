@@ -100,3 +100,13 @@ def student_transfer_menu():
         [InlineKeyboardButton(text="Написать причину", callback_data="transfer:click")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:main")]
     ])
+def lesson_time_keyboard(date_str: str):
+    hours = ["07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00"]
+    b, row = [], []
+    for h in hours:
+        row.append(InlineKeyboardButton(text=h, callback_data=f"actcal:time:{date_str}:{h}"))
+        if len(row) == 4: b.append(row); row = []
+    if row: b.append(row)
+    b.append([InlineKeyboardButton(text="✍️ Ввести вручную", callback_data="actcal:manual")])
+    b.append([InlineKeyboardButton(text="Назад", callback_data="menu:main", icon_custom_emoji_id=E_BACK)])
+    return InlineKeyboardMarkup(inline_keyboard=b)
