@@ -9,7 +9,10 @@ class Student(Base):
     tg_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
     full_name: Mapped[str] = mapped_column(String(100))
     username: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    timezone_offset: Mapped[int] = mapped_column(Integer, default=0) # НОВОЕ
+    
+    custom_name: Mapped[str | None] = mapped_column(String(100), nullable=True) # <--- ДОБАВЛЕНО ДЛЯ ИМЕНИ
+    
+    timezone_offset: Mapped[int] = mapped_column(Integer, default=0) 
     custom_hours_before: Mapped[int] = mapped_column(Integer, default=2)
     paid_lessons: Mapped[int] = mapped_column(Integer, default=0)
     last_payment_reminder: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -25,7 +28,7 @@ class Lesson(Base):
     student: Mapped["Student"] = relationship(back_populates="lessons")
 
 class LessonSlot(Base):
-    __tablename__ = "lesson_slots" # НОВАЯ ТАБЛИЦА
+    __tablename__ = "lesson_slots" 
     id: Mapped[int] = mapped_column(primary_key=True)
     teacher_id: Mapped[int] = mapped_column(BigInteger)
     datetime_start: Mapped[datetime] = mapped_column(DateTime)
