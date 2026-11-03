@@ -84,7 +84,16 @@ def slots_delete_keyboard(slots):
 def back_to_main(cb="menu:main"): return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Назад", callback_data=cb)]])
 def pay_menu(): return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="💳 После урока", callback_data="pay:after")], [InlineKeyboardButton(text="⏰ Абонемент", callback_data="pay:end")], [InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:main")]])
 def tariffs_keyboard(): return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="30м, 1р — 2000₽", callback_data="tar:30_1")], [InlineKeyboardButton(text="30м, 2р — 4000₽", callback_data="tar:30_2")], [InlineKeyboardButton(text="60м, 1р — 4000₽", callback_data="tar:60_1")], [InlineKeyboardButton(text="60м, 2р — 9000₽", callback_data="tar:60_2")]])
-def card_keyboard(sid): return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="➕ Занятие", callback_data=f"act:add:{sid}"), InlineKeyboardButton(text="💰 Оплата", callback_data=f"act:pay:{sid}")], [InlineKeyboardButton(text="🗑 Удалить", callback_data=f"stdel:ask:{sid}")], [InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:main")]])
+
+# ВОТ ТУТ ДОБАВЛЕНА КНОПКА ИЗМЕНЕНИЯ ИМЕНИ
+def card_keyboard(sid): 
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Занятие", callback_data=f"act:add:{sid}"), InlineKeyboardButton(text="💰 Оплата", callback_data=f"act:pay:{sid}")], 
+        [InlineKeyboardButton(text="✏️ Изменить имя", callback_data=f"stdel:setname:{sid}")], # <--- ДОБАВЛЕНО
+        [InlineKeyboardButton(text="🗑 Удалить", callback_data=f"stdel:ask:{sid}")], 
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:main")]
+    ])
+
 def set_paid_students_keyboard(students): return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=s.full_name[:28], callback_data=f"sp:{s.id}")] for s in students] + [[InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:main")]])
 def set_paid_amounts_keyboard(sid, current): return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="4 зан.", callback_data=f"spa:{sid}:4"), InlineKeyboardButton(text="8 зан.", callback_data=f"spa:{sid}:8")], [InlineKeyboardButton(text="➖ -1", callback_data=f"spa:{sid}:{current-1}"), InlineKeyboardButton(text=f"Сейчас: {current}", callback_data="ignore"), InlineKeyboardButton(text="➕ +1", callback_data=f"spa:{sid}:{current+1}")], [InlineKeyboardButton(text="❌ Обнулить", callback_data=f"spa:{sid}:0")], [InlineKeyboardButton(text="⬅️ Назад", callback_data="sp:open")]])
 def confirm_delete_student_keyboard(sid): return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🗑 Да", callback_data=f"stdel:{sid}"), InlineKeyboardButton(text="❌ Нет", callback_data="menu:main")]])
