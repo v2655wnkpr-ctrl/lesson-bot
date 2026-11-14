@@ -1,3 +1,5 @@
+import random
+import time
 import logging
 import os
 from datetime import datetime, timedelta
@@ -11,7 +13,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardBut
 from dotenv import load_dotenv
 from sqlalchemy import select
 from database import init_db, async_session
-from models import Student, Lesson, LessonSlot
+from models import Student, Lesson, LessonSlot, GameCollection, GameWord, GameResult
 from scheduler import start_scheduler, now_msk
 from texts import text_help, hours_text, text_pay_after, text_pay_end, text_payment_received, text_welcome, text_transfer_ask, text_transfer_sent, text_transfer_cancel, text_tariffs, text_pay_after_button, text_pay_end_button
 from keyboards import *
@@ -47,6 +49,14 @@ class TransferFlow(StatesGroup):
     reason = State()
 class SetCustomName(StatesGroup):
     waiting_name = State()
+
+# --- НОВЫЕ СОСТОЯНИЯ ДЛЯ ИГРЫ ---
+class GameFlow(StatesGroup):
+    playing = State()
+
+class GameAdmin(StatesGroup):
+    waiting_collection_name = State()
+    waiting_words = State()
 
 def is_teacher(uid: int) -> bool: return uid == TEACHER_ID
 
@@ -821,6 +831,269 @@ async def cb_set_paid_amount(callback: CallbackQuery):
         if student:
             student.paid_lessons = max(0, int(amount)); student.last_payment_reminder = None; await session.commit()
             await callback.message.edit_text(f"💰 {student.custom_name or student.full_name}\nОплачено: {student.paid_lessons}", reply_markup=set_paid_amounts_keyboard(student.id, student.paid_lessons))
+
+# ==========================================
+# ---------- НОВЫЙ БЛОК: ИГРА ----------
+# ==========================================
+
+async def send_game_admin_menu(message_or_cb, edit=True):
+    async with async_session() as session:
+        colls = (await session.execute(select(GameCollection))).scalars().all()
+    text = "🎮 <b>Блоки слов для игры</b>\n\nВыбери блок для редактирования или создай новый:"
+    kb = game_admin_menu(colls)
+    if edit:
+        await message_or_cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    else:
+        await message_or_cb.answer(text, reply_markup=kb, parse_mode="HTML")
+
+@dp.callback_query(lambda c: c.data == "game:admin_menu")
+async def cb_game_admin_menu(callback: CallbackQuery):
+    if not is_teacher(callback.from_user.id): return
+    await callback.answer()
+    await send_game_admin_menu(callback, edit=True)
+
+@dp.callback_query(lambda c: c.data == "gcol:create")
+async def cb_gcol_create(callback: CallbackQuery, state: FSMContext):
+    if not is_teacher(callback.from_user.id): return
+    await callback.answer()
+    await callback.message.edit_text("Введи название нового блока (например: «Глаголы», «Еда», «Цифры»):")
+    await state.set_state(GameAdmin.waiting_collection_name)
+
+@dp.message(GameAdmin.waiting_collection_name)
+async def save_gcol_name(message: types.Message, state: FSMContext):
+    if not is_teacher(message.from_user.id): return
+    name = message.text.strip()
+    async with async_session() as session:
+        session.add(GameCollection(name=name))
+        await session.commit()
+    await state.clear()
+    await send_game_admin_menu(message, edit=False)
+
+@dp.callback_query(lambda c: c.data.startswith("gcol:view_admin:"))
+async def cb_gcol_view_admin(callback: CallbackQuery):
+    if not is_teacher(callback.from_user.id): return
+    await callback.answer()
+    cid = int(callback.data.split(":")[2])
+    async with async_session() as session:
+        coll = await session.get(GameCollection, cid)
+    if not coll: return
+    await callback.message.edit_text(
+        f"📚 <b>Блок: {coll.name}</b>\n\nЗдесь ты можешь добавлять слова или удалять их.",
+        reply_markup=game_col_admin_menu(cid),
+        parse_mode="HTML"
+    )
+
+@dp.callback_query(lambda c: c.data.startswith("gcol:add_words:"))
+async def cb_gcol_add_words(callback: CallbackQuery, state: FSMContext):
+    if not is_teacher(callback.from_user.id): return
+    await callback.answer()
+    cid = int(callback.data.split(":")[2])
+    await state.update_data(gcol_id=cid)
+    await callback.message.edit_text(
+        "Отправь мне слова в формате:\n"
+        "<code>Итальянское слово - Русский перевод</code>\n\n"
+        "Каждое слово с новой строки!",
+        parse_mode="HTML",
+        reply_markup=back_to_main(f"gcol:view_admin:{cid}")
+    )
+    await state.set_state(GameAdmin.waiting_words)
+
+@dp.message(GameAdmin.waiting_words)
+async def save_gcol_words(message: types.Message, state: FSMContext):
+    if not is_teacher(message.from_user.id): return
+    data = await state.get_data()
+    cid = data.get("gcol_id")
+    if not cid: return
+    
+    lines = message.text.strip().split("\n")
+    added = 0
+    async with async_session() as session:
+        for line in lines:
+            if "-" in line:
+                parts = line.split("-", 1)
+                it = parts[0].strip()
+                ru = parts[1].strip()
+                if it and ru:
+                    session.add(GameWord(collection_id=cid, italian=it, russian=ru))
+                    added += 1
+        await session.commit()
+    
+    await state.clear()
+    await message.answer(f"✅ Успешно добавлено слов: {added}", reply_markup=game_col_admin_menu(cid))
+
+@dp.callback_query(lambda c: c.data.startswith("gcol:list_words:"))
+async def cb_gcol_list_words(callback: CallbackQuery):
+    if not is_teacher(callback.from_user.id): return
+    await callback.answer()
+    cid = int(callback.data.split(":")[2])
+    async with async_session() as session:
+        words = (await session.execute(select(GameWord).where(GameWord.collection_id == cid).order_by(GameWord.id.desc()))).scalars().all()
+    if not words:
+        return await callback.answer("В этом блоке пока нет слов!", show_alert=True)
+    await callback.message.edit_text(f"📋 <b>Слова в блоке ({len(words)} шт.)</b>\n\nНажми на ❌, чтобы удалить слово:", reply_markup=game_words_list_kb(words, cid), parse_mode="HTML")
+
+@dp.callback_query(lambda c: c.data.startswith("gcol:del_word:"))
+async def cb_gcol_del_word(callback: CallbackQuery):
+    if not is_teacher(callback.from_user.id): return
+    parts = callback.data.split(":")
+    wid = int(parts[2]); cid = int(parts[3])
+    async with async_session() as session:
+        word = await session.get(GameWord, wid)
+        if word: await session.delete(word); await session.commit()
+    callback.data = f"gcol:list_words:{cid}"
+    await cb_gcol_list_words(callback)
+
+@dp.callback_query(lambda c: c.data.startswith("gcol:del_ask:"))
+async def cb_gcol_del_ask(callback: CallbackQuery):
+    if not is_teacher(callback.from_user.id): return
+    await callback.answer()
+    cid = int(callback.data.split(":")[2])
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑 Да, удалить", callback_data=f"gcol:del:{cid}")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data=f"gcol:view_admin:{cid}")]
+    ])
+    await callback.message.edit_text("⚠️ Удалить блок вместе со всеми словами?", reply_markup=kb)
+
+@dp.callback_query(lambda c: c.data.startswith("gcol:del:"))
+async def cb_gcol_del(callback: CallbackQuery):
+    if not is_teacher(callback.from_user.id): return
+    await callback.answer()
+    cid = int(callback.data.split(":")[2])
+    async with async_session() as session:
+        words = (await session.execute(select(GameWord).where(GameWord.collection_id == cid))).scalars().all()
+        for w in words: await session.delete(w)
+        coll = await session.get(GameCollection, cid)
+        if coll: await session.delete(coll)
+        await session.commit()
+    await send_game_admin_menu(callback, edit=True)
+
+# --- СТУДЕНТ: ИГРА И ЛИДЕРБОРД ---
+
+@dp.callback_query(lambda c: c.data == "game:menu")
+async def cb_game_menu(callback: CallbackQuery):
+    await callback.answer()
+    async with async_session() as session:
+        colls = (await session.execute(select(GameCollection))).scalars().all()
+    await callback.message.edit_text("🎮 <b>Турнир на скорость</b>\n\nВыбери блок слов, в который хочешь сыграть:", reply_markup=game_student_menu(colls), parse_mode="HTML")
+
+@dp.callback_query(lambda c: c.data.startswith("game:start_tournament:"))
+async def cb_game_start(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    coll_id = callback.data.split(":")[2]
+    
+    async with async_session() as session:
+        if coll_id == "all":
+            db_words = (await session.execute(select(GameWord))).scalars().all()
+        else:
+            db_words = (await session.execute(select(GameWord).where(GameWord.collection_id == int(coll_id)))).scalars().all()
+            
+    if len(db_words) < 4:
+        return await callback.answer(f"❌ В этом блоке только {len(db_words)} слов. Нужно минимум 4 для игры.", show_alert=True)
+
+    questions = []
+    for _ in range(10):
+        w1 = random.choice(db_words)
+        wrong_words = [w for w in db_words if w.italian != w1.italian]
+        wrong = random.sample(wrong_words, 3) if len(wrong_words) >= 3 else random.choices(wrong_words, k=3)
+        
+        mode = random.choice(["to_ru", "to_it"])
+        if mode == "to_ru":
+            q_text = f"Что значит <b>{w1.italian}</b>?"
+            correct = w1.russian
+            choices = [w.russian for w in wrong] + [correct]
+        else:
+            q_text = f"Как будет по-итальянски <b>{w1.russian}</b>?"
+            correct = w1.italian
+            choices = [w.italian for w in wrong] + [correct]
+            
+        random.shuffle(choices)
+        questions.append({"text": q_text, "correct": correct, "choices": choices})
+    
+    await state.update_data(q_index=0, score=0, questions=questions, start_time=time.time())
+    
+    q = questions[0]
+    await callback.message.edit_text(
+        f"🚀 <b>Поехали!</b>\n\nВопрос 1/10:\n{q['text']}",
+        reply_markup=game_question_kb(q['choices']),
+        parse_mode="HTML"
+    )
+    await state.set_state(GameFlow.playing)
+
+@dp.callback_query(lambda c: c.data.startswith("game:ans:"), GameFlow.playing)
+async def cb_game_answer(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    q_index = data.get("q_index", 0)
+    questions = data.get("questions", [])
+    score = data.get("score", 0)
+    
+    if q_index >= len(questions): return await callback.answer()
+        
+    q = questions[q_index]
+    chosen = callback.data[len("game:ans:"):]
+    
+    if chosen == q["correct"]:
+        score += 1
+        await callback.answer("✅ Верно!")
+    else:
+        await callback.answer(f"❌ Ошибка! Правильно: {q['correct']}", show_alert=True)
+        
+    q_index += 1
+    
+    if q_index >= len(questions):
+        time_taken = int(time.time() - data["start_time"])
+        await state.clear()
+        
+        async with async_session() as session:
+            st = (await session.execute(select(Student).where(Student.tg_id == callback.from_user.id))).scalar_one_or_none()
+            if st:
+                session.add(GameResult(student_id=st.id, score=score, time_taken=time_taken))
+                await session.commit()
+                
+        if score == 10: res_text = "🔥 ИДЕАЛЬНО! Ты просто машина!"
+        elif score >= 7: res_text = "👍 Отличный результат!"
+        else: res_text = "😢 Стоит повторить слова."
+            
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🏆 Таблица лидеров", callback_data="game:leaderboard")],
+            [InlineKeyboardButton(text="🎮 Играть еще", callback_data="game:menu")],
+            [InlineKeyboardButton(text="⬅️ В меню", callback_data="menu:main")]
+        ])
+        await callback.message.edit_text(
+            f"🏁 <b>Турнир завершен!</b>\n\nПравильных ответов: <b>{score}/10</b>\nВремя: <b>{time_taken} сек.</b>\n\n{res_text}",
+            reply_markup=kb, parse_mode="HTML"
+        )
+        return
+
+    await state.update_data(q_index=q_index, score=score)
+    next_q = questions[q_index]
+    await callback.message.edit_text(
+        f"Вопрос {q_index + 1}/10:\n{next_q['text']}",
+        reply_markup=game_question_kb(next_q['choices']),
+        parse_mode="HTML"
+    )
+
+@dp.callback_query(lambda c: c.data == "game:leaderboard")
+async def cb_game_leaderboard(callback: CallbackQuery):
+    await callback.answer()
+    async with async_session() as session:
+        results = (await session.execute(
+            select(GameResult, Student).join(Student)
+            .order_by(GameResult.score.desc(), GameResult.time_taken.asc())
+            .limit(10)
+        )).all()
+        
+    if not results:
+        return await callback.message.edit_text("Пока нет результатов. Стань первым!", reply_markup=back_to_main("game:menu"))
+        
+    text = "🏆 <b>Зал славы (Топ-10)</b>\n\n"
+    for i, (res, st) in enumerate(results, 1):
+        name = st.custom_name or st.full_name
+        short_name = name.split()[0] if name else "Аноним"
+        text += f"{i}. {short_name} — {res.score}/10 ({res.time_taken} сек.)\n"
+        
+    await callback.message.edit_text(text, reply_markup=back_to_main("game:menu"), parse_mode="HTML")
+
+# ==========================================
 
 @dp.callback_query(lambda c: c.data == "menu:main")
 async def cb_main(callback: CallbackQuery, state: FSMContext):
