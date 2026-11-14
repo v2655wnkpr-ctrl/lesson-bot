@@ -119,3 +119,31 @@ def lesson_time_keyboard(date_str: str):
     b.append([InlineKeyboardButton(text="✍️ Ввести вручную", callback_data="actcal:manual")])
     b.append([InlineKeyboardButton(text="Назад", callback_data="menu:main", icon_custom_emoji_id=E_BACK)])
     return InlineKeyboardMarkup(inline_keyboard=b)
+def game_admin_menu(collections):
+    b = [[InlineKeyboardButton(text=f"📚 {c.name}", callback_data=f"gcol:view_admin:{c.id}")] for c in collections]
+    b.append([InlineKeyboardButton(text="➕ Создать новый блок", callback_data="gcol:create")])
+    b.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:main")])
+    return InlineKeyboardMarkup(inline_keyboard=b)
+
+def game_col_admin_menu(cid):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Добавить слова", callback_data=f"gcol:add_words:{cid}")],
+        [InlineKeyboardButton(text="📋 Список слов", callback_data=f"gcol:list_words:{cid}")],
+        [InlineKeyboardButton(text="🗑 Удалить блок", callback_data=f"gcol:del_ask:{cid}")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="game:admin_menu")]
+    ])
+
+def game_words_list_kb(words, cid):
+    b = [[InlineKeyboardButton(text=f"❌ {w.italian} - {w.russian}", callback_data=f"gcol:del_word:{w.id}:{cid}")] for w in words[:15]]
+    b.append([InlineKeyboardButton(text="⬅️ Назад", callback_data=f"gcol:view_admin:{cid}")])
+    return InlineKeyboardMarkup(inline_keyboard=b)
+
+def game_student_menu(collections):
+    b = [[InlineKeyboardButton(text="🎲 Случайные (все слова)", callback_data="game:start_tournament:all")]]
+    b += [[InlineKeyboardButton(text=f"📚 {c.name}", callback_data=f"game:start_tournament:{c.id}")] for c in collections]
+    b.append([InlineKeyboardButton(text="🏆 Таблица лидеров", callback_data="game:leaderboard")])
+    b.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:main")])
+    return InlineKeyboardMarkup(inline_keyboard=b)
+
+def game_question_kb(options):
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=opt, callback_data=f"game:ans:{opt}")] for opt in options])
