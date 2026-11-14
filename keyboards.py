@@ -158,3 +158,17 @@ def select_student_kb(students, action="add"):
         b.append([InlineKeyboardButton(text=name, callback_data=f"sel_stud:{action}:{s.id}")])
     b.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:main")])
     return InlineKeyboardMarkup(inline_keyboard=b)
+def broadcast_students_kb(students, selected_ids):
+    b = []
+    for s in students:
+        mark = "✅ " if s.id in selected_ids else "⚪ "
+        name = s.custom_name or s.full_name
+        b.append([InlineKeyboardButton(text=f"{mark}{name}", callback_data=f"bc:toggle:{s.id}")])
+    
+    b.append([
+        InlineKeyboardButton(text="✅ Выбрать всех", callback_data="bc:all"),
+        InlineKeyboardButton(text="❌ Снять всех", callback_data="bc:none")
+    ])
+    b.append([InlineKeyboardButton(text=f"🚀 Отправить ({len(selected_ids)})", callback_data="bc:next")])
+    b.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:main")])
+    return InlineKeyboardMarkup(inline_keyboard=b)
