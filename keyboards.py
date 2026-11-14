@@ -34,6 +34,7 @@ def main_menu_teacher():
         [InlineKeyboardButton(text="Часовой пояс", callback_data="menu:timezone")],
         [InlineKeyboardButton(text="🎮 Слова для игры", callback_data="game:admin_menu")],
         [InlineKeyboardButton(text="🎮 Игра", callback_data="game:menu")],
+        [InlineKeyboardButton(text="📢 Рассылка", callback_data="menu:broadcast")],
     ])
 
 def timezone_offset_keyboard():
@@ -150,3 +151,10 @@ def game_student_menu(collections):
 
 def game_question_kb(options):
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=opt, callback_data=f"game:ans:{opt}")] for opt in options])
+def select_student_kb(students, action="add"):
+    b = []
+    for s in students:
+        name = s.custom_name or s.full_name
+        b.append([InlineKeyboardButton(text=name, callback_data=f"sel_stud:{action}:{s.id}")])
+    b.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:main")])
+    return InlineKeyboardMarkup(inline_keyboard=b)
