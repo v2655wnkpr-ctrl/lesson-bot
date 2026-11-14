@@ -20,6 +20,7 @@ def main_menu_student():
         [InlineKeyboardButton(text="Мои занятия", callback_data="menu:lessons", icon_custom_emoji_id=E_LESSONS), InlineKeyboardButton(text="Напоминания", callback_data="menu:settings", icon_custom_emoji_id=E_SETTINGS)],
         [InlineKeyboardButton(text="Часовой пояс", callback_data="menu:timezone")],
         [InlineKeyboardButton(text="Связаться", url=TEACHER_LINK, icon_custom_emoji_id=E_CONTACT), InlineKeyboardButton(text="Помощь", callback_data="menu:help", icon_custom_emoji_id=E_HELP)],
+        [InlineKeyboardButton(text="🎮 Игра", callback_data="game:menu")],
     ])
 
 def main_menu_teacher():
@@ -31,6 +32,8 @@ def main_menu_teacher():
         [InlineKeyboardButton(text="💰 Оплата", callback_data="menu:pay"), InlineKeyboardButton(text="set_paid", callback_data="sp:open", icon_custom_emoji_id=E_SETPAID)],
         [InlineKeyboardButton(text="Найти", callback_data="menu:find", icon_custom_emoji_id=E_FIND), InlineKeyboardButton(text="Ученики", callback_data="menu:students", icon_custom_emoji_id=E_STUDENTS)],
         [InlineKeyboardButton(text="Часовой пояс", callback_data="menu:timezone")],
+        [InlineKeyboardButton(text="🎮 Слова для игры", callback_data="game:admin_menu")],
+        [InlineKeyboardButton(text="🎮 Игра", callback_data="game:menu")],
     ])
 
 def timezone_offset_keyboard():
