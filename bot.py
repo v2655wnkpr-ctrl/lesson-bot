@@ -1049,7 +1049,7 @@ async def cb_game_answer(callback: CallbackQuery, state: FSMContext):
                 session.add(GameResult(student_id=st.id, score=score, time_taken=time_taken))
                 await session.commit()
                 
-        if score == 10: res_text = "🔥 ИДЕАЛЬНО! Ты просто машина!"
+        if score == 10: res_text = "Sei bravissimo!!! Sei un grande genio😘"
         elif score >= 7: res_text = "👍 Отличный результат!"
         else: res_text = "😢 Стоит повторить слова."
             
