@@ -33,3 +33,26 @@ class LessonSlot(Base):
     teacher_id: Mapped[int] = mapped_column(BigInteger)
     datetime_start: Mapped[datetime] = mapped_column(DateTime)
     is_booked: Mapped[bool] = mapped_column(Boolean, default=False)
+class GameCollection(Base):
+    __tablename__ = "game_collections"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+
+
+class GameWord(Base):
+    __tablename__ = "game_words"
+    id = Column(Integer, primary_key=True, index=True)
+    collection_id = Column(Integer, ForeignKey("game_collections.id"), nullable=True)
+    italian = Column(String, nullable=False)
+    russian = Column(String, nullable=False)
+
+
+class GameResult(Base):
+    __tablename__ = "game_results"
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id"))
+    score = Column(Integer, default=0)       # Сколько правильных
+    time_taken = Column(Integer, default=0)  # Время в секундах
+    date_played = Column(DateTime, default=datetime.utcnow)
+
+    student = relationship("Student")
