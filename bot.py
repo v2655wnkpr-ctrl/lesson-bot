@@ -37,8 +37,6 @@ class AddLesson(StatesGroup):
     student = State(); dt = State(); title = State()
 class SetTimezone(StatesGroup):
     choosing_tz = State()
-class PayFlow(StatesGroup):
-    choosing_student = State()
 class FindStudent(StatesGroup):
     query = State()
 class RescheduleFlow(StatesGroup):
@@ -49,14 +47,14 @@ class TransferFlow(StatesGroup):
     reason = State()
 class SetCustomName(StatesGroup):
     waiting_name = State()
-
-# --- НОВЫЕ СОСТОЯНИЯ ДЛЯ ИГРЫ ---
 class GameFlow(StatesGroup):
     playing = State()
-
 class GameAdmin(StatesGroup):
     waiting_collection_name = State()
     waiting_words = State()
+class BroadcastFlow(StatesGroup):
+    choosing_students = State()
+    waiting_text = State()
 
 def is_teacher(uid: int) -> bool: return uid == TEACHER_ID
 
@@ -331,44 +329,39 @@ async def cb_hours(callback: CallbackQuery):
 # ---------- ДОБАВЛЕНИЕ ЗАНЯТИЯ ----------
 
 @dp.callback_query(lambda c: c.data == "menu:add")
-async def cb_add(callback: CallbackQuery, state: FSMContext):
+async def cb_add(callback: CallbackQuery):
     await callback.answer()
     if not is_teacher(callback.from_user.id): return
-    async with async_session() as session: students = (await session.execute(select(Student).where(Student.tg_id != TEACHER_ID))).scalars().all()
+    async with async_session() as session: 
+        students = (await session.execute(select(Student).where(Student.tg_id != TEACHER_ID))).scalars().all()
     if not students: return await callback.message.edit_text("Нет учеников.", reply_markup=back_to_main())
-    lines, data = ["👥 Выбери ученика:\n"], {"total": len(students)}
-    for i, s in enumerate(students, 1): lines.append(f"{i}. {s.custom_name or s.full_name} @{s.username or '—'}"); data[f"s_{i}"] = s.id
-    await callback.message.edit_text("\n".join(lines) + f"\n\nНомер 1–{len(students)}", reply_markup=back_to_main())
-    await state.update_data(**data); await state.set_state(AddLesson.student)
+    await callback.message.edit_text(
+        "👥 <b>Выбери ученика для занятия:</b>",
+        reply_markup=select_student_kb(students, "add"),
+        parse_mode="HTML"
+    )
 
-@dp.message(AddLesson.student)
-async def add_student(message: types.Message, state: FSMContext):
-    if not is_teacher(message.from_user.id): return
-    data, txt = await state.get_data(), message.text.strip()
-    sid = data.get(f"s_{int(txt)}") if txt.isdigit() and 1 <= int(txt) <= data.get("total", 0) else None
-    if not sid:
-        low = txt.lower().lstrip("@")
-        async with async_session() as session:
-            for s in (await session.execute(select(Student))).scalars().all():
-                if s.tg_id == TEACHER_ID: continue
-                if (low == (s.username or "").lower()
-                        or low in (s.full_name or "").lower()
-                        or low in (s.custom_name or "").lower()
-                        or low == str(s.tg_id)):
-                    sid = s.id; break
-    if not sid:
-        return await message.answer("Не нашёл. Введи номер из списка, @username, имя или Telegram ID:")
+@dp.callback_query(lambda c: c.data.startswith("sel_stud:add:"))
+async def cb_select_student_add(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not is_teacher(callback.from_user.id): return
+    sid = int(callback.data.split(":")[2])
     async with async_session() as session:
         student = await session.get(Student, sid)
+    if not student: return
+    
     await state.update_data(sid=student.id, sname=(student.custom_name or student.full_name))
     await state.set_state(AddLesson.dt)
+    
     now = now_msk()
     kb = calendar_keyboard(now.year, now.month, set(), prefix="actcal")
     kb.inline_keyboard.insert(-1, [InlineKeyboardButton(text="✍️ Ввести вручную", callback_data="actcal:manual")])
-    await message.answer(
-        f"Ученик: {student.custom_name or student.full_name}\n\n"
+    
+    await callback.message.edit_text(
+        f"Ученик: <b>{student.custom_name or student.full_name}</b>\n\n"
         f"Выбери дату в календаре или введи текстом (ДД.ММ.ГГГГ ЧЧ:ММ):", 
-        reply_markup=kb
+        reply_markup=kb,
+        parse_mode="HTML"
     )
 
 @dp.message(AddLesson.dt)
@@ -705,40 +698,46 @@ async def cb_pay(callback: CallbackQuery):
     if is_teacher(callback.from_user.id): await callback.message.edit_text("💰 Оплата", reply_markup=pay_menu())
 
 @dp.callback_query(lambda c: c.data in ["pay:after", "pay:end"])
-async def cb_pay_choose(callback: CallbackQuery, state: FSMContext):
+async def cb_pay_choose(callback: CallbackQuery):
     await callback.answer()
     if not is_teacher(callback.from_user.id): return
     mode = callback.data.split(":")[1]
-    async with async_session() as session: students = (await session.execute(select(Student).where(Student.tg_id != TEACHER_ID))).scalars().all()
-    lines, data = ["👥 Кому:\n"], {"mode": mode, "total": len(students)}
-    for i, s in enumerate(students, 1): lines.append(f"{i}. {s.custom_name or s.full_name}"); data[f"st_{i}"] = s.tg_id
-    await state.update_data(**data); await state.set_state(PayFlow.choosing_student)
-    await callback.message.edit_text("\n".join(lines) + f"\nНомер 1–{len(students)}:", reply_markup=back_to_main("menu:pay"))
-
-@dp.message(PayFlow.choosing_student)
-async def pay_send(message: types.Message, state: FSMContext):
-    if not is_teacher(message.from_user.id): return
-    data, txt = await state.get_data(), message.text.strip()
-    tg = data.get(f"st_{int(txt)}") if txt.isdigit() and 1 <= int(txt) <= data.get("total", 0) else None
-    if tg is None:
-        async with async_session() as session:
-            for s in (await session.execute(select(Student))).scalars().all():
-                if s.tg_id != TEACHER_ID and (
-                    txt.lower() == (s.username or "").lower()
-                    or txt.lower() in (s.full_name or "").lower()
-                    or txt.lower() in (s.custom_name or "").lower()
-                ): tg = s.tg_id; break
-    if tg is None: return await message.answer("Не нашёл.")
+    async with async_session() as session: 
+        students = (await session.execute(select(Student).where(Student.tg_id != TEACHER_ID))).scalars().all()
     
-    if data.get("mode") == "after":
+    if not students: 
+        return await callback.message.edit_text("Нет учеников.", reply_markup=back_to_main("menu:pay"))
+        
+    await callback.message.edit_text(
+        "👥 <b>Кому отправить реквизиты?</b>",
+        reply_markup=select_student_kb(students, f"pay_{mode}"),
+        parse_mode="HTML"
+    )
+
+@dp.callback_query(lambda c: c.data.startswith("sel_stud:pay_"))
+async def cb_select_student_pay(callback: CallbackQuery):
+    await callback.answer()
+    if not is_teacher(callback.from_user.id): return
+    parts = callback.data.split(":")
+    mode = parts[1].replace("pay_", "") # "after" или "end"
+    sid = int(parts[2])
+    
+    async with async_session() as session:
+        student = await session.get(Student, sid)
+    if not student: return
+    
+    if mode == "after":
         text = text_pay_after_button()
         kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="💳 Перейти к оплате", callback_data="pay:single:req")], [InlineKeyboardButton(text="📚 Посмотреть тарифы", callback_data="pay:show_tariffs:single")]])
     else:
         text = text_pay_end_button()
         kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📚 Выбрать абонемент", callback_data="pay:show_tariffs:sub")]])
-    try: await bot.send_message(tg, text, reply_markup=kb)
-    except Exception as e: await message.answer(f"Ошибка: {e}")
-    await state.clear(); await message.answer("✅ Отправлено.", reply_markup=back_to_main("menu:pay"))
+        
+    try: 
+        await bot.send_message(student.tg_id, text, reply_markup=kb)
+        await callback.message.edit_text(f"✅ Отправлено: <b>{student.custom_name or student.full_name}</b>", reply_markup=back_to_main("menu:pay"), parse_mode="HTML")
+    except Exception as e: 
+        await callback.message.edit_text(f"Ошибка отправки: {e}", reply_markup=back_to_main("menu:pay"))
 
 @dp.callback_query(lambda c: c.data.startswith("pay:show_tariffs"))
 async def cb_pay_show_tariffs(callback: CallbackQuery):
@@ -833,7 +832,103 @@ async def cb_set_paid_amount(callback: CallbackQuery):
             await callback.message.edit_text(f"💰 {student.custom_name or student.full_name}\nОплачено: {student.paid_lessons}", reply_markup=set_paid_amounts_keyboard(student.id, student.paid_lessons))
 
 # ==========================================
-# ---------- НОВЫЙ БЛОК: ИГРА ----------
+# ---------- РАССЫЛКА ----------
+# ==========================================
+
+@dp.callback_query(lambda c: c.data == "menu:broadcast")
+async def cb_broadcast_menu(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not is_teacher(callback.from_user.id): return
+    
+    async with async_session() as session:
+        students = (await session.execute(select(Student).where(Student.tg_id != TEACHER_ID))).scalars().all()
+        
+    if not students:
+        return await callback.message.edit_text("Нет учеников для рассылки.", reply_markup=back_to_main())
+        
+    await state.update_data(selected_ids=[])
+    await callback.message.edit_text(
+        "👥 <b>Выбери учеников для рассылки:</b>\n"
+        "Нажимай на имена, чтобы отметить их галочкой ✅",
+        reply_markup=broadcast_students_kb(students, []),
+        parse_mode="HTML"
+    )
+    await state.set_state(BroadcastFlow.choosing_students)
+
+@dp.callback_query(lambda c: c.data.startswith("bc:"), BroadcastFlow.choosing_students)
+async def cb_broadcast_toggle(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    action = callback.data.split(":")[1]
+    
+    async with async_session() as session:
+        students = (await session.execute(select(Student).where(Student.tg_id != TEACHER_ID))).scalars().all()
+        
+    data = await state.get_data()
+    selected_ids = data.get("selected_ids", [])
+    
+    if action == "toggle":
+        sid = int(callback.data.split(":")[2])
+        if sid in selected_ids: selected_ids.remove(sid)
+        else: selected_ids.append(sid)
+    elif action == "all":
+        selected_ids = [s.id for s in students]
+    elif action == "none":
+        selected_ids = []
+    elif action == "next":
+        if not selected_ids:
+            return await callback.answer("Ты не выбрал ни одного ученика!", show_alert=True)
+        
+        await state.update_data(selected_ids=selected_ids)
+        await callback.message.edit_text(
+            f"✍️ Выбрано учеников: <b>{len(selected_ids)}</b>.\n\n"
+            f"Напиши текст сообщения, которое им нужно отправить (можно прикрепить фото):",
+            parse_mode="HTML"
+        )
+        await state.set_state(BroadcastFlow.waiting_text)
+        return
+        
+    await state.update_data(selected_ids=selected_ids)
+    await callback.message.edit_reply_markup(reply_markup=broadcast_students_kb(students, selected_ids))
+
+@dp.message(BroadcastFlow.waiting_text)
+async def send_broadcast(message: types.Message, state: FSMContext):
+    if not is_teacher(message.from_user.id): return
+    
+    data = await state.get_data()
+    selected_ids = data.get("selected_ids", [])
+    
+    if not selected_ids:
+        await state.clear()
+        return await message.answer("Ошибка: список выбранных пуст.", reply_markup=main_menu_teacher())
+        
+    async with async_session() as session:
+        students = (await session.execute(select(Student).where(Student.id.in_(selected_ids)))).scalars().all()
+        
+    success = 0
+    fail = 0
+    
+    for st in students:
+        try:
+            if message.photo:
+                await bot.send_photo(st.tg_id, message.photo[-1].file_id, caption=message.html_text, parse_mode="HTML")
+            else:
+                await bot.send_message(st.tg_id, message.html_text, parse_mode="HTML")
+            success += 1
+        except Exception as e:
+            logging.error(f"Ошибка отправки рассылки {st.tg_id}: {e}")
+            fail += 1
+            
+    await state.clear()
+    await message.answer(
+        f"✅ <b>Рассылка завершена!</b>\n\n"
+        f"Доставлено: {success}\n"
+        f"Заблокировали бота: {fail}",
+        reply_markup=main_menu_teacher(),
+        parse_mode="HTML"
+    )
+
+# ==========================================
+# ---------- ИГРА ----------
 # ==========================================
 
 async def send_game_admin_menu(message_or_cb, edit=True):
@@ -978,7 +1073,6 @@ async def cb_game_menu(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data.startswith("game:start_tournament:"))
 async def cb_game_start(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
     coll_id = callback.data.split(":")[2]
     
     async with async_session() as session:
@@ -990,10 +1084,13 @@ async def cb_game_start(callback: CallbackQuery, state: FSMContext):
     if len(db_words) < 4:
         return await callback.answer(f"❌ В этом блоке только {len(db_words)} слов. Нужно минимум 4 для игры.", show_alert=True)
 
+    await callback.answer()
+    
     questions = []
     for _ in range(10):
         w1 = random.choice(db_words)
         wrong_words = [w for w in db_words if w.italian != w1.italian]
+        if not wrong_words: continue
         wrong = random.sample(wrong_words, 3) if len(wrong_words) >= 3 else random.choices(wrong_words, k=3)
         
         mode = random.choice(["to_ru", "to_it"])
@@ -1006,8 +1103,14 @@ async def cb_game_start(callback: CallbackQuery, state: FSMContext):
             correct = w1.italian
             choices = [w.italian for w in wrong] + [correct]
             
+        choices = list(set(choices))
+        while len(choices) < 4: choices.append("---")
+            
         random.shuffle(choices)
         questions.append({"text": q_text, "correct": correct, "choices": choices})
+    
+    if not questions:
+        return await callback.message.edit_text("Ошибка генерации вопросов. Проверь слова.", reply_markup=back_to_main("game:menu"))
     
     await state.update_data(q_index=0, score=0, questions=questions, start_time=time.time())
     
@@ -1049,7 +1152,7 @@ async def cb_game_answer(callback: CallbackQuery, state: FSMContext):
                 session.add(GameResult(student_id=st.id, score=score, time_taken=time_taken))
                 await session.commit()
                 
-        if score == 10: res_text = "Sei bravissimo!!! Sei un grande genio😘"
+        if score == 10: res_text = ""Sei bravissimo!!! Sei un grande genio😘"
         elif score >= 7: res_text = "👍 Отличный результат!"
         else: res_text = "😢 Стоит повторить слова."
             
