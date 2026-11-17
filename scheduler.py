@@ -7,7 +7,7 @@ from database import async_session
 from models import Lesson, Student, LessonSlot
 
 # ID преподавателя итальянского бота
-TEACHER_ID = 932503024
+TEACHER_ID = 8657440970
 
 scheduler = AsyncIOScheduler()
 
