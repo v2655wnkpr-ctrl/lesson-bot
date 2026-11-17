@@ -20,7 +20,7 @@ from keyboards import *
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-TEACHER_ID = 932503024
+TEACHER_ID = 8657440970
 if not BOT_TOKEN: raise ValueError("Не найден BOT_TOKEN")
 logging.basicConfig(level=logging.INFO)
 
@@ -747,7 +747,7 @@ async def cb_pay_show_tariffs(callback: CallbackQuery):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="30м, 1р — 2000₽", callback_data=f"tar:30_1:{context}")],
         [InlineKeyboardButton(text="30м, 2р — 4000₽", callback_data=f"tar:30_2:{context}")],
-        [InlineKeyboardButton(text="60м, 1р — 4000₽", callback_data=f"tar:60_1:{context}")],
+        [InlineKeyboardButton(text="60м, 1р — 4500₽", callback_data=f"tar:60_1:{context}")],
         [InlineKeyboardButton(text="60м, 2р — 9000₽", callback_data=f"tar:60_2:{context}")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"pay:back:{context}")]
     ])
