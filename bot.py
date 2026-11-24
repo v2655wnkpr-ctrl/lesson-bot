@@ -1,4 +1,4 @@
-import random.  
+import random
 import time
 import logging
 import os
