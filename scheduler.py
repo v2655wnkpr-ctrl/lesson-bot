@@ -7,7 +7,7 @@ from database import async_session
 from models import Lesson, Student, LessonSlot
 
 # ID преподавателя итальянского бота
-TEACHER_ID = 932503024
+TEACHER_ID = 932503024 
 
 scheduler = AsyncIOScheduler()
 
@@ -16,10 +16,27 @@ def now_msk() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=3)
 
 async def check_lessons(bot):
-    """Проверяет занятия: напоминания, ссылки, списание с абонемента"""
+    """Проверяет занятия, напоминания, автосписание и чистит старые слоты"""
     now = now_msk()
     async with async_session() as session:
-        # Получаем занятия на ближайшие 24 часа + те, что прошли, но не отмечены как done
+        
+        # --- 1. АВТОМАТИЧЕСКОЕ ЗАКРЫТИЕ ПРОСРОЧЕННЫХ СЛОТОВ ---
+        # Ищем слоты, которые не забронированы и время которых уже прошло
+        q_expired_slots = select(LessonSlot).where(
+            LessonSlot.is_booked == False, 
+            LessonSlot.datetime_start < now
+        )
+        r_expired_slots = await session.execute(q_expired_slots)
+        expired_slots = r_expired_slots.scalars().all()
+        
+        if expired_slots:
+            for slot in expired_slots:
+                await session.delete(slot)
+            await session.commit()
+            logging.info(f"Удалено просроченных свободных слотов: {len(expired_slots)}")
+
+        # --- 2. РАБОТА С ЗАНЯТИЯМИ ---
+        # Получаем занятия на ближайшие 24 часа + те, что прошли (для автосписания)
         q = select(Lesson).where(
             Lesson.datetime_start >= now - timedelta(hours=3),
             Lesson.datetime_start <= now + timedelta(hours=24)
@@ -64,11 +81,11 @@ async def check_lessons(bot):
             
             diff_minutes = (local_lesson_time - local_now).total_seconds() / 60
             
-            # 1. Напоминание за N часов (окно ±1 минута)
+            # 1. Напоминание за N часов (сработает строго 1 раз)
             target_minutes = remind_hours * 60
-            if (target_minutes - 1) <= diff_minutes <= (target_minutes + 1):
+            if (target_minutes - 1) < diff_minutes <= target_minutes:
                 text_st = (
-                    f"🔔 Напоминание: у вас занятие через {remind_hours} ч.\n\n"
+                    f"🔔 Напоминание: у тебя занятие через {remind_hours} ч.\n\n"
                     f"📅 {local_lesson_time.strftime('%d.%m %H:%M')}\n"
                     f"📚 {lesson.title}"
                 )
@@ -77,13 +94,13 @@ async def check_lessons(bot):
                 except Exception:
                     pass
                     
-            # 2. Ссылка на урок за 30 минут (окно 29-30 минут)
-            if 29 <= diff_minutes <= 30:
+            # 2. Ссылка на урок за 30 минут (сработает строго 1 раз)
+            if 29 < diff_minutes <= 30:
                 link = "https://telemost.yandex.ru/j/55769145881207"
                 
                 # Ученику
                 text_st_link = (
-                    f"🔗 Скоро урок! Подключайтесь:\n\n"
+                    f"🔗 Скоро урок! Подключайся:\n\n"
                     f"📅 {local_lesson_time.strftime('%H:%M')}\n"
                     f"Ссылка: {link}"
                 )
